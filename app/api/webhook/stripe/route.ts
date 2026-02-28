@@ -1,16 +1,22 @@
 // Stripe webhook handler — verifies signature, upgrades user plan on payment
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
+import type Stripe from "stripe";
 import { supabaseAdmin } from "@/lib/db";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-02-25.clover",
-});
+import { stripe } from "@/lib/stripe";
 
 // App Router: disable body parsing so we can read the raw bytes for sig verification
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
+  // Runtime guard — key missing, log and reject gracefully
+  if (!stripe) {
+    console.error("[webhook/stripe] STRIPE_SECRET_KEY missing — webhook blocked");
+    return NextResponse.json(
+      { error: "Stripe Key Missing: webhook 처리가 불가능합니다." },
+      { status: 500 }
+    );
+  }
+
   const body = await req.text();
   const sig = req.headers.get("stripe-signature");
 

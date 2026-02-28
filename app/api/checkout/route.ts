@@ -1,12 +1,8 @@
 // Stripe Checkout session creator — returns a redirect URL for payment
 import { NextRequest, NextResponse } from "next/server";
-import Stripe from "stripe";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
-
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY!, {
-  apiVersion: "2026-02-25.clover",
-});
+import { stripe } from "@/lib/stripe";
 
 // Price IDs — set these in Stripe dashboard, then add to env
 const PRICE_IDS: Record<string, string> = {
@@ -15,6 +11,15 @@ const PRICE_IDS: Record<string, string> = {
 };
 
 export async function POST(req: NextRequest) {
+  // Runtime guard — Stripe key missing (env var not set in this environment)
+  if (!stripe) {
+    console.error("[checkout] STRIPE_SECRET_KEY missing — request blocked");
+    return NextResponse.json(
+      { error: "Stripe Key Missing: 결제 서비스가 현재 설정되지 않았습니다." },
+      { status: 500 }
+    );
+  }
+
   const session = await getServerSession(authOptions);
 
   if (!session?.user?.email) {
