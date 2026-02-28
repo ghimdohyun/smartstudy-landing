@@ -298,4 +298,4 @@ export default function PlanPage() {
                 </div>
           </main>
         );
-}</main>
+}
