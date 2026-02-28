@@ -1,5 +1,6 @@
 @import "tailwindcss";
 
+/* ── Base ───────────────────────────────────────── */
 :root {
   --background: #ffffff;
   --foreground: #171717;
@@ -19,8 +20,44 @@
   }
 }
 
+html {
+  /* Smooth anchor scrolling: #service, #features, #pricing, #faq */
+  scroll-behavior: smooth;
+  /* Prevent CLS when scrollbar appears */
+  overflow-y: scroll;
+}
+
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family:
+    var(--font-geist-sans),
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* ── Responsive utilities for Header ────────────── */
+.dh-nav {
+  display: flex;
+}
+.dh-login {
+  display: block;
+}
+
+@media (max-width: 639px) {
+  .dh-nav {
+    display: none;
+  }
+  .dh-login {
+    display: none;
+  }
+}
+
+/* ── Anchor offset: compensates for 60px sticky header ── */
+section[id] {
+  scroll-margin-top: 68px;
 }
