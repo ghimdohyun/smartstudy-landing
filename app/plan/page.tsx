@@ -55,23 +55,27 @@ export default function PlanPage() {
       padding: '32px 16px',
     }}>
       <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        {/* Demo mode notice */}
+        {/* Demo mode notice — glassmorphism floating bar */}
         {result.isDemo && (
           <div style={{
-            padding: '12px 20px', marginBottom: 20,
-            background: 'linear-gradient(135deg,#fef3c7,#fff7ed)',
-            border: '1px solid #fcd34d', borderRadius: 12,
-            display: 'flex', alignItems: 'flex-start', gap: 10,
+            padding: '11px 18px', marginBottom: 20,
+            background: 'rgba(255,255,255,0.72)',
+            backdropFilter: 'blur(16px)',
+            WebkitBackdropFilter: 'blur(16px)',
+            border: '1px solid rgba(255,255,255,0.55)',
+            borderRadius: 14,
+            boxShadow: '0 4px 24px rgba(15,23,42,0.07)',
+            display: 'flex', alignItems: 'center', gap: 10,
           }}>
-            <span style={{ fontSize: 18, lineHeight: 1.4, flexShrink: 0 }}>🔧</span>
-            <div>
-              <p style={{ margin: 0, fontWeight: 700, fontSize: 13, color: '#92400e' }}>
-                AI 서버 점검 중 — 데모 결과입니다
-              </p>
-              <p style={{ margin: '2px 0 0', fontSize: 12, color: '#78350f', lineHeight: 1.6 }}>
-                현재 AI 백엔드가 점검 중으로 예시 계획이 표시됩니다. 잠시 후 다시 시도하면 실제 맞춤 계획을 받을 수 있습니다.
-              </p>
-            </div>
+            <span style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: '#f59e0b', flexShrink: 0,
+              boxShadow: '0 0 0 3px rgba(245,158,11,0.18)',
+            }} />
+            <p style={{ margin: 0, fontSize: 13, color: '#6b7280' }}>
+              <strong style={{ color: '#374151' }}>데모 모드</strong> —
+              AI 서버 점검 중입니다. 잠시 후 다시 시도하면 실제 맞춤 계획을 받을 수 있습니다.
+            </p>
           </div>
         )}
 

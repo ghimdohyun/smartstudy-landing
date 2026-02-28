@@ -2,6 +2,7 @@
 
 'use client';
 
+import { useState } from 'react';
 import type { YearPlan, MonthlyGoal, SemesterDetail } from '@/types';
 
 interface Props {
@@ -51,9 +52,14 @@ function MonthTimeline({ monthlyGoals }: { monthlyGoals: MonthlyGoal[] }) {
   );
 }
 
+const TAB_LABELS = ['1학기 (봄)', '2학기 (가을)'];
+
 export default function YearPlanView({ yearPlan }: Props) {
+  const [activeTab, setActiveTab] = useState(0);
   // Cast to SemesterDetail[] at runtime to safely access monthlyGoals
   const semesters = (yearPlan.semesters ?? []) as SemesterDetail[];
+  const sem = semesters[activeTab] ?? semesters[0];
+  const accent = SEMESTER_ACCENTS[activeTab % SEMESTER_ACCENTS.length];
 
   return (
     <div style={{ marginTop: 32 }}>
@@ -67,53 +73,99 @@ export default function YearPlanView({ yearPlan }: Props) {
       </h2>
 
       {semesters.length > 0 && (
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-          {semesters.map((sem, i) => (
-            <div key={i} style={{
-              flex: '1 1 280px', minWidth: 0,
-              background: '#fff', borderRadius: 16, padding: 18,
-              boxShadow: '0 4px 24px rgba(15,23,42,0.07)',
-              borderTop: `4px solid ${SEMESTER_ACCENTS[i % SEMESTER_ACCENTS.length]}`,
+        <>
+          {/* ── Pill-style tab switcher ── */}
+          {semesters.length > 1 && (
+            <div style={{
+              display: 'inline-flex', gap: 4,
+              background: '#f1f5f9', borderRadius: 14, padding: 4,
+              marginBottom: 16,
             }}>
-              <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', marginTop: 0, marginBottom: 8 }}>
-                {sem.semester ?? `${i + 1}학기`}
+              {TAB_LABELS.slice(0, semesters.length).map((label, i) => (
+                <button
+                  key={i}
+                  onClick={() => setActiveTab(i)}
+                  style={{
+                    padding: '8px 20px', borderRadius: 10, border: 'none',
+                    background: activeTab === i ? '#fff' : 'transparent',
+                    boxShadow: activeTab === i ? '0 2px 8px rgba(15,23,42,0.10)' : 'none',
+                    color: activeTab === i ? '#111827' : '#6b7280',
+                    fontWeight: activeTab === i ? 700 : 500,
+                    fontSize: 13, cursor: 'pointer',
+                    transition: 'background 0.15s, color 0.15s, box-shadow 0.15s',
+                    fontFamily: 'inherit',
+                  }}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* ── Active semester panel ── */}
+          {sem && (
+            <div style={{
+              background: '#fff', borderRadius: 20, padding: 24,
+              boxShadow: '0 2px 8px rgba(15,23,42,0.05), 0 12px 32px rgba(15,23,42,0.06)',
+              borderTop: `4px solid ${accent}`,
+            }}>
+              <h3 style={{ fontSize: 16, fontWeight: 700, color: '#111827', marginTop: 0, marginBottom: 10 }}>
+                {sem.semester ?? `${activeTab + 1}학기`}
               </h3>
 
               {sem.goal && (
-                <p style={{ fontSize: 13, color: '#374151', margin: '0 0 10px' }}>{sem.goal}</p>
+                <p style={{
+                  fontSize: 14, color: '#374151', margin: '0 0 14px',
+                  padding: '10px 14px',
+                  background: `${accent}12`,
+                  borderRadius: 10, borderLeft: `3px solid ${accent}`,
+                }}>
+                  {sem.goal}
+                </p>
               )}
 
-              {(sem.recommendedCourses ?? []).length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', margin: '0 0 6px' }}>추천 과목</p>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 12, color: '#374151' }}>
-                    {(sem.recommendedCourses ?? []).map((c, j) => <li key={j}>{c}</li>)}
-                  </ul>
-                </div>
-              )}
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+                {/* Recommended courses */}
+                {(sem.recommendedCourses ?? []).length > 0 && (
+                  <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>추천 과목</p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                      {(sem.recommendedCourses ?? []).map((c, j) => (
+                        <span key={j} style={{
+                          fontSize: 12, padding: '4px 10px',
+                          background: '#f1f5f9', color: '#374151',
+                          borderRadius: 999, fontWeight: 500,
+                        }}>
+                          {c}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
-              {(sem.milestones ?? []).length > 0 && (
-                <div style={{ marginBottom: 10 }}>
-                  <p style={{ fontSize: 12, fontWeight: 600, color: '#6b7280', margin: '0 0 6px' }}>마일스톤</p>
-                  <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 12, color: '#374151' }}>
-                    {(sem.milestones ?? []).map((m, j) => <li key={j}>{m}</li>)}
-                  </ul>
-                </div>
-              )}
+                {/* Milestones */}
+                {(sem.milestones ?? []).length > 0 && (
+                  <div style={{ flex: '1 1 160px', minWidth: 0 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: '#6b7280', margin: '0 0 8px', textTransform: 'uppercase', letterSpacing: '0.06em' }}>마일스톤</p>
+                    <ul style={{ margin: 0, padding: '0 0 0 16px', fontSize: 13, color: '#374151', lineHeight: 1.8 }}>
+                      {(sem.milestones ?? []).map((m, j) => <li key={j}>{m}</li>)}
+                    </ul>
+                  </div>
+                )}
+              </div>
 
               {sem.weeklyRoutine && (
-                <p style={{ fontSize: 12, color: '#6b7280', margin: '0 0 0' }}>
+                <p style={{ fontSize: 12, color: '#9ca3af', margin: '14px 0 0' }}>
                   주간 루틴: {sem.weeklyRoutine}
                 </p>
               )}
 
-              {/* Monthly goals timeline (new in Phase 2) */}
               {(sem.monthlyGoals ?? []).length > 0 && (
                 <MonthTimeline monthlyGoals={sem.monthlyGoals!} />
               )}
             </div>
-          ))}
-        </div>
+          )}
+        </>
       )}
 
       {(yearPlan.risks ?? []).length > 0 && (

@@ -21,10 +21,10 @@ export default function PlanCard({ plan, index }: Props) {
 
   return (
     <div style={{
-      background: '#fff', borderRadius: 16,
-      boxShadow: '0 4px 24px rgba(15,23,42,0.08)',
+      background: '#fff', borderRadius: 20,
+      boxShadow: '0 2px 8px rgba(15,23,42,0.05), 0 12px 32px rgba(15,23,42,0.06)',
       border: `1px solid ${color.border}`,
-      padding: 20, flex: '1 1 280px', minWidth: 0,
+      padding: 24, flex: '1 1 280px', minWidth: 0,
     }}>
       {/* Plan label + credits */}
       <div style={{ display: 'flex', alignItems: 'center', marginBottom: 12, gap: 10 }}>
@@ -60,24 +60,29 @@ export default function PlanCard({ plan, index }: Props) {
               display: 'flex', justifyContent: 'space-between', alignItems: 'center',
             }}>
               <div style={{ display: 'flex', flexDirection: 'column', gap: 2, minWidth: 0 }}>
-                <span style={{ fontWeight: 500, color: '#111827' }}>{course.name}</span>
+                <span style={{ fontWeight: 600, color: '#111827' }}>{course.name}</span>
                 {(course.code ?? course.requirement) && (
                   <div style={{ display: 'flex', gap: 4, flexWrap: 'wrap' }}>
                     {course.code && (
                       <span style={{
-                        fontSize: 10, padding: '1px 5px',
-                        background: '#f1f5f9', color: '#475569', borderRadius: 3,
-                        fontFamily: 'ui-monospace, monospace',
+                        fontSize: 10, padding: '2px 6px',
+                        background: '#f1f5f9', color: '#475569', borderRadius: 4,
+                        fontFamily: 'ui-monospace, monospace', letterSpacing: '0.02em',
                       }}>
                         {course.code}
                       </span>
                     )}
                     {course.requirement && (
                       <span style={{
-                        fontSize: 10, padding: '1px 5px',
-                        background: course.requirement.includes('필수') ? '#fef2f2' : '#f0fdf4',
-                        color: course.requirement.includes('필수') ? '#b91c1c' : '#166534',
-                        borderRadius: 3,
+                        fontSize: 10, padding: '2px 6px',
+                        /* 공통필수(COR) → Sogang crimson, 선택 → green, 전공필수 → indigo */
+                        background: course.requirement.includes('공통필수') ? '#fde8eb'
+                          : course.requirement.includes('필수') ? '#eef2ff'
+                          : '#f0fdf4',
+                        color: course.requirement.includes('공통필수') ? '#b5152b'
+                          : course.requirement.includes('필수') ? '#4338ca'
+                          : '#166534',
+                        borderRadius: 4, fontWeight: 600,
                       }}>
                         {course.requirement}
                       </span>
@@ -88,8 +93,9 @@ export default function PlanCard({ plan, index }: Props) {
               <div style={{ display: 'flex', gap: 6, alignItems: 'center', flexShrink: 0 }}>
                 {course.credits !== undefined && (
                   <span style={{
-                    fontSize: 11, padding: '2px 6px',
-                    background: color.badge, color: color.badgeText, borderRadius: 4,
+                    fontSize: 12, padding: '2px 8px',
+                    background: color.badge, color: color.badgeText,
+                    borderRadius: 999, fontWeight: 700,
                   }}>
                     {course.credits}학점
                   </span>

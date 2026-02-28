@@ -61,3 +61,15 @@ body {
 section[id] {
   scroll-margin-top: 68px;
 }
+
+/* ── Button baseline — smoother hover/focus across the app ── */
+button {
+  font-family: inherit;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ── Glassmorphism backdrop support — Safari requires -webkit- ── */
+.dh-glass {
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+}

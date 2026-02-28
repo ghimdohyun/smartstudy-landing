@@ -4,7 +4,6 @@
 'use client';
 
 import StudyPlanForm from '@/components/StudyPlanForm';
-import StudyPlanResult from '@/components/StudyPlanResult';
 import { useStudyPlan } from '@/hooks/useStudyPlan';
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -134,21 +133,14 @@ export default function ServiceSection() {
         {/* API / network error banner with retry */}
         {showBanner && <ErrorBanner message={error!} onRetry={retry} />}
 
-        {/* Form + Result grid */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 16 }}>
-          <div style={{ flex: '1 1 340px', minWidth: 0 }}>
-            <StudyPlanForm
-              onSubmit={generate}
-              loading={loading}
-              /* Show only completion status; loading steps are in the banner above */
-              status={loading ? '' : status}
-              /* Validation errors stay inside the form; API errors handled by banner */
-              error={isValidationError ? error : null}
-            />
-          </div>
-          <div style={{ flex: '1 1 340px', minWidth: 0 }}>
-            <StudyPlanResult result={result} />
-          </div>
+        {/* Form — centered, max-width 640px */}
+        <div style={{ maxWidth: 640, margin: '0 auto' }}>
+          <StudyPlanForm
+            onSubmit={generate}
+            loading={loading}
+            status={loading ? '' : status}
+            error={isValidationError ? error : null}
+          />
         </div>
       </div>
     </section>
