@@ -7,9 +7,12 @@ import { parseToken } from "@/lib/token";
 import { PLAN_LIMITS } from "@/types/auth";
 import type { PlanTier } from "@/types/auth";
 
-const REPLIT_CHAT_URL =
+// /api/generate-plan is the dedicated structured endpoint on the new Replit backend.
+// Falls back to /api/chat (legacy) if REPLIT_PLAN_URL is not set.
+const REPLIT_PLAN_URL =
+  process.env.REPLIT_PLAN_URL ??
   process.env.REPLIT_API_URL ??
-  "https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat";
+  "https://groq-chatbot-backend--ghimdohyun.replit.app/api/generate-plan";
 
 /** Upstream request timeout in milliseconds */
 const UPSTREAM_TIMEOUT_MS = 45_000;
@@ -274,12 +277,16 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const message = buildPrompt(studentInfo, timetableInfo);
-
-    const upstreamPayload: Record<string, string> = { message };
-    if (imageUrl && typeof imageUrl === "string" && imageUrl.trim()) {
-      upstreamPayload.imageUrl = imageUrl.trim();
-    }
+    // Prefer the dedicated /api/generate-plan endpoint (structured payload).
+    // Legacy fallback: if the URL still points to /api/chat, wrap in { message }.
+    const isLegacyChatEndpoint = REPLIT_PLAN_URL.endsWith("/api/chat");
+    const upstreamPayload = isLegacyChatEndpoint
+      ? { message: buildPrompt(studentInfo, timetableInfo) }
+      : {
+          studentInfo,
+          timetableInfo,
+          ...(imageUrl?.trim() ? { imageUrl: imageUrl.trim() } : {}),
+        };
 
     // Apply timeout via AbortController
     const controller = new AbortController();
@@ -287,7 +294,7 @@ export async function POST(req: NextRequest) {
 
     let upstream: Response;
     try {
-      upstream = await fetch(REPLIT_CHAT_URL, {
+      upstream = await fetch(REPLIT_PLAN_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(upstreamPayload),
