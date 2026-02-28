@@ -2,7 +2,26 @@
 
 import type { StudyPlanInput, StudyPlanResult, StudyPlan, YearPlan } from '@/types';
 
-// ---------- Chat ----------
+// ─── Usage limit error (HTTP 402) ─────────────────────────────────────────────
+
+export interface UpgradeRequiredDetail {
+  currentPlan: string;
+  limit: number;
+  used: number;
+  upgradeUrl: string;
+}
+
+/** Thrown when the server returns 402 Payment Required (usage limit exceeded) */
+export class UpgradeRequiredError extends Error {
+  readonly detail: UpgradeRequiredDetail;
+  constructor(message: string, detail: UpgradeRequiredDetail) {
+    super(message);
+    this.name = 'UpgradeRequiredError';
+    this.detail = detail;
+  }
+}
+
+// ─── Chat ─────────────────────────────────────────────────────────────────────
 
 export async function fetchChatReply(message: string): Promise<string> {
   const res = await fetch('/api/chat', {
@@ -19,7 +38,7 @@ export async function fetchChatReply(message: string): Promise<string> {
   return data.reply;
 }
 
-// ---------- Study Plan ----------
+// ─── Study Plan ───────────────────────────────────────────────────────────────
 
 /** Shape returned by /api/study-plan when the prompt is resolved */
 interface StudyPlanApiResponse {
@@ -32,6 +51,11 @@ interface StudyPlanApiResponse {
   error?: string;
   /** Set to true when the route returned the local demo fallback */
   _isDemo?: boolean;
+  // 402 fields
+  currentPlan?: string;
+  limit?: number;
+  used?: number;
+  upgradeUrl?: string;
 }
 
 interface RawCourse {
@@ -85,6 +109,20 @@ export async function fetchStudyPlan(input: StudyPlanInput): Promise<StudyPlanRe
       imageUrl: input.imageUrl,
     }),
   });
+
+  // 402: usage limit exceeded — throw UpgradeRequiredError for modal trigger
+  if (res.status === 402) {
+    const err = await res.json().catch(() => ({})) as StudyPlanApiResponse;
+    throw new UpgradeRequiredError(
+      err.error ?? '이번 달 사용 한도를 초과했습니다.',
+      {
+        currentPlan: err.currentPlan ?? 'beta',
+        limit: err.limit ?? 3,
+        used: err.used ?? 0,
+        upgradeUrl: err.upgradeUrl ?? '/#pricing',
+      }
+    );
+  }
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };

@@ -1,87 +1,84 @@
 // Service section: AI study plan form + result viewer (scroll target #service)
-// Includes step-by-step loading indicator and Korean error banner with retry.
+// Loading: animated skeleton preview cards. Error: modal dialog.
+// Context-aware: text automatically switches with background brightness (light ↔ dark).
 
 'use client';
 
 import StudyPlanForm from '@/components/StudyPlanForm';
+import UpgradeModal from '@/components/UpgradeModal';
+import ApiErrorModal from '@/components/ApiErrorModal';
+import { Skeleton } from '@/components/ui/skeleton';
 import { useStudyPlan } from '@/hooks/useStudyPlan';
 
-// ─── Sub-components ───────────────────────────────────────────────────────────
+// ─── Skeleton preview shown while AI is running ───────────────────────────────
 
-function LoadingStepBanner({ step }: { step: string }) {
+function AiAnalysisSkeleton({ status }: { status: string }) {
   return (
     <div
       role="status"
       aria-live="polite"
-      style={{
-        marginBottom: 20, padding: '14px 20px',
-        background: 'linear-gradient(135deg,rgba(102,126,234,0.08),rgba(168,85,247,0.08))',
-        border: '1px solid rgba(102,126,234,0.2)', borderRadius: 14,
-        display: 'flex', alignItems: 'center', gap: 12,
-      }}
+      aria-label="AI 분석 중"
+      className="w-full"
     >
-      {/* Spinner */}
-      <svg
-        width="18" height="18" viewBox="0 0 24 24" fill="none"
-        stroke="#667eea" strokeWidth="2.5" strokeLinecap="round"
-        style={{ flexShrink: 0, animation: 'spin 1s linear infinite' }}
-      >
-        <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
-      </svg>
-      <span style={{ fontSize: 14, color: '#5046e5', fontWeight: 600 }}>{step}</span>
-    </div>
-  );
-}
-
-function ErrorBanner({
-  message,
-  onRetry,
-}: {
-  message: string;
-  onRetry: () => void;
-}) {
-  const isRetryable = !message.includes('학생 정보를 입력해주세요');
-
-  return (
-    <div
-      role="alert"
-      style={{
-        marginBottom: 20, padding: '16px 20px',
-        background: 'linear-gradient(135deg,#fff1f2,#fff7ed)',
-        border: '1px solid #fca5a5', borderRadius: 14,
-        display: 'flex', alignItems: 'flex-start', gap: 12,
-      }}
-    >
-      {/* Icon */}
-      <span style={{ fontSize: 20, flexShrink: 0, lineHeight: 1.4 }}>⚠️</span>
-
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <p style={{
-          margin: 0, fontSize: 14, fontWeight: 600, color: '#b91c1c', marginBottom: 4,
-        }}>
-          오류가 발생했습니다
-        </p>
-        <p style={{ margin: 0, fontSize: 13, color: '#7f1d1d', lineHeight: 1.6 }}>
-          {message}
-        </p>
+      {/* Status badge */}
+      <div className="flex items-center justify-center gap-2.5 mb-6">
+        <span
+          className="inline-block w-2 h-2 rounded-full bg-indigo-500"
+          style={{ animation: 'pulse 1.2s ease-in-out infinite' }}
+        />
+        <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+          {status || 'AI 분석 중...'}
+        </span>
+        <span
+          className="inline-block w-2 h-2 rounded-full bg-violet-500"
+          style={{ animation: 'pulse 1.2s ease-in-out infinite 0.4s' }}
+        />
       </div>
 
-      {/* Retry button — only shown for API / network errors */}
-      {isRetryable && (
-        <button
-          onClick={onRetry}
-          style={{
-            flexShrink: 0, padding: '8px 16px',
-            background: 'linear-gradient(135deg,#667eea,#764ba2)',
-            color: '#fff', border: 'none', borderRadius: 999,
-            fontSize: 13, fontWeight: 600, cursor: 'pointer',
-            boxShadow: '0 4px 12px rgba(102,126,234,0.35)',
-            whiteSpace: 'nowrap',
-          }}
-        >
-          다시 시도하기
-        </button>
-      )}
+      {/* 4 Plan skeleton cards */}
+      <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
+        {['Plan A', 'Plan B', 'Plan C', 'Plan D'].map((label) => (
+          <div
+            key={label}
+            className="rounded-2xl border border-gray-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 shadow-sm"
+          >
+            <div className="flex items-center gap-2 mb-3">
+              <Skeleton className="w-5 h-5 rounded-full" />
+              <Skeleton className="h-4 w-14 rounded" />
+            </div>
+            <Skeleton className="h-3 w-full rounded mb-1.5" />
+            <Skeleton className="h-3 w-4/5 rounded mb-3" />
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className="flex items-center gap-2 mb-1.5">
+                <Skeleton className="w-3 h-3 rounded-full shrink-0" />
+                <Skeleton className="h-2.5 rounded" style={{ width: `${55 + i * 8}%` }} />
+              </div>
+            ))}
+            <div className="mt-3 pt-3 border-t border-gray-100 dark:border-neutral-800">
+              <Skeleton className="h-3 w-16 rounded" />
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Year plan skeleton */}
+      <div className="rounded-2xl border border-gray-100 dark:border-neutral-800 bg-white dark:bg-neutral-900 p-4 shadow-sm">
+        <div className="flex items-center gap-2 mb-4">
+          <Skeleton className="w-5 h-5 rounded-full" />
+          <Skeleton className="h-4 w-28 rounded" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+          {[3, 4, 5, 6].map((m) => (
+            <div key={m} className="rounded-xl bg-gray-50 dark:bg-neutral-800/50 p-3">
+              <Skeleton className="h-3 w-10 rounded mb-2" />
+              <Skeleton className="h-2.5 w-full rounded mb-1" />
+              <Skeleton className="h-2.5 w-3/4 rounded" />
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
     </div>
   );
 }
@@ -89,60 +86,84 @@ function ErrorBanner({
 // ─── Main section ─────────────────────────────────────────────────────────────
 
 export default function ServiceSection() {
-  const { result, loading, error, status, generate, retry } = useStudyPlan();
+  const {
+    loading, error, status, generate, retry, clearError,
+    upgradeDetail, closeUpgradeModal,
+  } = useStudyPlan();
 
-  // Validation errors (empty studentInfo) show inside the form, not in the banner.
-  const isValidationError = error === '학생 정보를 입력해주세요.';
-  const showBanner = !!error && !isValidationError && !loading;
+  const isValidationError =
+    error === '학생 정보를 입력해주세요.' ||
+    error === '시간표 이미지를 업로드하거나 URL을 입력해주세요.';
+  const showErrorModal = !!error && !isValidationError && !loading;
 
   return (
-    <section
-      id="service"
-      style={{
-        padding: '72px 20px',
-        background: 'linear-gradient(135deg,#eff6ff,#eef2ff,#f5f3ff)',
-        fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-      }}
-    >
-      {/* CSS keyframes for spinner — injected once */}
-      <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+    <>
+      <UpgradeModal
+        open={upgradeDetail !== null}
+        onClose={closeUpgradeModal}
+        currentPlan={upgradeDetail?.currentPlan}
+        used={upgradeDetail?.used}
+        limit={upgradeDetail?.limit}
+      />
 
-      <div style={{ maxWidth: 960, margin: '0 auto' }}>
-        {/* Section heading */}
-        <div style={{ textAlign: 'center', marginBottom: 36 }}>
-          <p style={{
-            fontSize: 12, fontWeight: 700, color: '#10b981',
-            textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 12px',
-          }}>
-            AI 수강 계획 생성
-          </p>
-          <h2 style={{
-            fontSize: 'clamp(22px, 3.5vw, 30px)', fontWeight: 800, color: '#0f172a',
-            margin: '0 0 10px', letterSpacing: '-0.5px',
-          }}>
-            지금 바로 계획을 만들어보세요
-          </h2>
-          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
-            학생 정보를 입력하면 AI가 수강 계획 4안과 1년 로드맵을 즉시 생성합니다.
-          </p>
+      <ApiErrorModal
+        open={showErrorModal}
+        message={error ?? ''}
+        onClose={clearError}
+        onRetry={retry}
+      />
+
+      {/*
+        ── Context-aware section ──
+        Light mode:  soft blue/indigo/violet gradient, dark text
+        Dark mode:   deep slate/indigo gradient, light text
+        Text color auto-switches via Tailwind dark: variants.
+      */}
+      <section
+        id="service"
+        className={[
+          'py-20 px-5',
+          /* Light bg → dark text */
+          'bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50',
+          'text-gray-900',
+          /* Dark bg → light text */
+          'dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60',
+          'dark:text-gray-100',
+          /* Font */
+          "font-['system-ui','Segoe_UI',sans-serif]",
+        ].join(' ')}
+        style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
+      >
+        <div style={{ maxWidth: 960, margin: '0 auto' }}>
+          {/* Section heading */}
+          <div className="text-center mb-9">
+            <p className="text-[13px] font-bold text-emerald-500 uppercase tracking-[0.1em] m-0 mb-3">
+              AI 수강 계획 생성
+            </p>
+            <h2 className="text-[clamp(22px,3.5vw,32px)] font-extrabold tracking-tight m-0 mb-2.5
+                           text-gray-900 dark:text-white">
+              지금 바로 계획을 만들어보세요
+            </h2>
+            <p className="text-[15px] text-gray-600 dark:text-gray-300 m-0">
+              학생 정보를 입력하면 AI가 수강 계획 4안과 1년 로드맵을 즉시 생성합니다.
+            </p>
+          </div>
+
+          {/* Skeleton while loading, form otherwise */}
+          {loading ? (
+            <AiAnalysisSkeleton status={status} />
+          ) : (
+            <div style={{ maxWidth: 640, margin: '0 auto' }}>
+              <StudyPlanForm
+                onSubmit={generate}
+                loading={false}
+                status={status}
+                error={isValidationError ? error : null}
+              />
+            </div>
+          )}
         </div>
-
-        {/* Step-by-step loading indicator */}
-        {loading && <LoadingStepBanner step={status} />}
-
-        {/* API / network error banner with retry */}
-        {showBanner && <ErrorBanner message={error!} onRetry={retry} />}
-
-        {/* Form — centered, max-width 640px */}
-        <div style={{ maxWidth: 640, margin: '0 auto' }}>
-          <StudyPlanForm
-            onSubmit={generate}
-            loading={loading}
-            status={loading ? '' : status}
-            error={isValidationError ? error : null}
-          />
-        </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 }

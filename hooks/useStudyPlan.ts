@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { StudyPlanInput, StudyPlanResult } from '@/types';
-import { fetchStudyPlan } from '@/lib/api';
+import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from '@/lib/api';
 
 // ─── Step-by-step loading messages ───────────────────────────────────────────
 
@@ -21,6 +21,7 @@ const STEP_INTERVAL_MS = 2500;
 // ─── Error normalization ──────────────────────────────────────────────────────
 
 function normalizeError(err: unknown): string {
+  if (err instanceof UpgradeRequiredError) return err.message;
   const msg = err instanceof Error ? err.message : String(err);
 
   // Already Korean — pass through
@@ -51,6 +52,9 @@ export function useStudyPlan() {
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
 
+  /** Upgrade modal state — null = closed */
+  const [upgradeDetail, setUpgradeDetail] = useState<UpgradeRequiredDetail | null>(null);
+
   /** Stored last input for retry support */
   const lastInputRef = useRef<StudyPlanInput | null>(null);
   const stepIndexRef = useRef(0);
@@ -72,10 +76,15 @@ export function useStudyPlan() {
       setError('학생 정보를 입력해주세요.');
       return;
     }
+    if (!input.imageUrl?.trim()) {
+      setError('시간표 이미지를 업로드하거나 URL을 입력해주세요.');
+      return;
+    }
 
     lastInputRef.current = input;
     setError(null);
     setStatus('');
+    setUpgradeDetail(null);
     setLoading(true);
 
     try {
@@ -87,7 +96,12 @@ export function useStudyPlan() {
       }
       router.push('/plan');
     } catch (err: unknown) {
-      setError(normalizeError(err));
+      if (err instanceof UpgradeRequiredError) {
+        // Open upgrade modal instead of a plain error message
+        setUpgradeDetail(err.detail);
+      } else {
+        setError(normalizeError(err));
+      }
       setStatus('');
     } finally {
       setLoading(false);
@@ -99,5 +113,15 @@ export function useStudyPlan() {
     if (lastInputRef.current) generate(lastInputRef.current);
   }, [generate]);
 
-  return { result, loading, error, status, generate, retry };
+  return {
+    result,
+    loading,
+    error,
+    status,
+    generate,
+    retry,
+    clearError: () => setError(null),
+    upgradeDetail,
+    closeUpgradeModal: () => setUpgradeDetail(null),
+  };
 }

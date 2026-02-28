@@ -1,5 +1,14 @@
 // Domain types for SmartStudy AI study planner
 
+// ─── Navigation ───────────────────────────────────────────────────────────────
+
+export interface NavItem {
+  title: string;
+  href: string;
+  disabled?: boolean;
+  external?: boolean;
+}
+
 // ─── Re-export extended catalogue / plan types ────────────────────────────────
 export type {
   CourseCategoryCode,

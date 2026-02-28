@@ -1,7 +1,9 @@
 // Proxy route: forwards chat messages to Replit /api/chat and returns the reply.
 // Falls back to a Korean maintenance message when the upstream is unavailable.
+// Usage guard: authenticated users' chat is tracked; chat stays free for beta.
 
 import { NextRequest, NextResponse } from "next/server";
+import { checkUsage, usageLimitResponse } from "@/lib/usage";
 
 const REPLIT_CHAT_URL =
   process.env.REPLIT_API_URL ??
@@ -14,6 +16,15 @@ const FALLBACK_REPLY =
   "수강 계획 생성 기능은 아래 폼에서 이용 가능합니다.";
 
 export async function POST(req: NextRequest) {
+  // Chat access: check plan (pro users always allowed; beta = free)
+  // Future: restrict chat per-plan when limits differ from study-plan
+  const usage = await checkUsage();
+  // Only block if the plan explicitly excludes chat (currently none do)
+  // This guard is ready for per-feature plan differentiation in Phase 6
+  if (!usage.allowed && usage.plan !== "beta") {
+    return usageLimitResponse(usage);
+  }
+
   try {
     const body = await req.json();
     const { message } = body;

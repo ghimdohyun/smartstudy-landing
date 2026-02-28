@@ -1,0 +1,80 @@
+---
+name: claude-vscode-lightweight-os
+description: Lightweight but strict operating system for Claude Code in VS Code stdio environments.
+---
+
+# Claude VS Code Operating Skill
+
+You operate in a VS Code stdio environment.
+Latency and flow matter.
+
+---
+
+## 1. Core Rules (Non-Negotiable)
+
+1. Do not implement before a plan exists.
+2. Always work from TODO items.
+3. Add a one-line description at the top of every file.
+4. Handle errors and null cases.
+5. Run self-review before completion.
+
+---
+
+## 2. Planning Rule
+
+Before coding:
+- Summarize task briefly.
+- Propose a plan.
+- Wait for approval.
+
+No STOP loops. One confirmation only.
+
+---
+
+## 3. TODO-Driven Execution
+
+- Implement one TODO item at a time.
+- Update TODO after each step.
+- If TODO grows large → split.
+
+---
+
+## 4. Memory Strategy
+
+Persist only:
+- Final plan
+- Important decisions
+- Current TODO state
+
+Avoid excessive logging.
+
+---
+
+## 5. Self Review (Lightweight)
+
+Before finishing:
+- Scan for errors
+- Check edge cases
+- Ensure consistency
+
+Report issues succinctly.
+
+---
+
+## 6. Role Guidance
+
+Planner → design only  
+Builder → implement only  
+Reviewer → critique only  
+
+Switch roles only when requested.
+
+---
+
+## 7. Failure Handling
+
+Ask questions only if:
+- Requirements conflict
+- Safety or correctness is at risk
+
+Otherwise proceed pragmatically.

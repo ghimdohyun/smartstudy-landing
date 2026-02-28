@@ -1,19 +1,21 @@
-// Site header: sticky, glass-morphism, responsive at 640 px breakpoint
+// Site header: sticky glassmorphism, responsive at 640 px, dark mode aware
+"use client";
 
-'use client';
+import Link from "next/link";
+import { ModeToggle } from "@/components/mode-toggle";
+import { cn } from "@/lib/utils";
 
-import Link from 'next/link';
-
-function NavLink({ href, children }: { href: string; children: React.ReactNode }) {
+function NavLink({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
   return (
     <a
       href={href}
-      style={{
-        padding: '6px 12px', fontSize: 13, fontWeight: 500,
-        color: '#4b5563', textDecoration: 'none', borderRadius: 8,
-      }}
-      onMouseEnter={(e) => (e.currentTarget.style.color = '#111827')}
-      onMouseLeave={(e) => (e.currentTarget.style.color = '#4b5563')}
+      className="px-3 py-1.5 text-[13px] font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 rounded-lg transition-colors no-underline"
     >
       {children}
     </a>
@@ -22,80 +24,55 @@ function NavLink({ href, children }: { href: string; children: React.ReactNode }
 
 export default function Header() {
   return (
-    <header style={{
-      position: 'sticky', top: 0, zIndex: 100,
-      background: 'rgba(255,255,255,0.88)',
-      backdropFilter: 'blur(14px)',
-      WebkitBackdropFilter: 'blur(14px)',
-      borderBottom: '1px solid rgba(0,0,0,0.07)',
-      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-    }}>
-      <div style={{
-        maxWidth: 1100, margin: '0 auto', padding: '0 20px',
-        display: 'flex', alignItems: 'center', height: 60, gap: 8,
-      }}>
+    <header
+      className={cn(
+        "sticky top-0 z-50",
+        "bg-white/90 dark:bg-neutral-950/90",
+        "backdrop-blur-[14px]",
+        "border-b border-black/[0.07] dark:border-white/[0.08]"
+      )}
+    >
+      <div className="max-w-[1100px] mx-auto px-5 flex items-center h-[60px] gap-2">
         {/* Logo */}
         <Link
           href="/"
-          style={{
-            textDecoration: 'none', display: 'flex',
-            alignItems: 'center', gap: 8, marginRight: 8, flexShrink: 0,
-          }}
+          className="flex items-center gap-2 mr-2 shrink-0 no-underline"
         >
-          <span style={{
-            width: 28, height: 28, borderRadius: 8,
-            background: 'linear-gradient(135deg,#667eea,#764ba2)',
-            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 13, color: '#fff', fontWeight: 800,
-          }}>
+          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#667eea] to-[#764ba2] inline-flex items-center justify-center text-[13px] text-white font-extrabold">
             DH
           </span>
-          <span style={{
-            fontSize: 15, fontWeight: 700, color: '#111827',
-            letterSpacing: '-0.3px', whiteSpace: 'nowrap',
-          }}>
+          <span className="text-[15px] font-bold text-gray-900 dark:text-gray-100 tracking-tight whitespace-nowrap">
             Dream Helixion
           </span>
         </Link>
 
         {/* Desktop nav — hidden below 640 px via .dh-nav in globals.css */}
-        <nav className="dh-nav" style={{ alignItems: 'center', flex: 1 }}>
+        <nav className="dh-nav items-center flex-1">
           <NavLink href="/#features">기능</NavLink>
           <NavLink href="/#pricing">가격</NavLink>
           <NavLink href="/#faq">FAQ</NavLink>
         </nav>
 
-        {/* Spacer on mobile so CTA stays right-aligned */}
-        <div style={{ flex: 1 }} className="dh-nav" />
+        {/* Spacer on mobile */}
+        <div className="flex-1 dh-nav" />
 
         {/* Right side */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
+        <div className="flex items-center gap-2 shrink-0">
+          <ModeToggle />
+
           {/* Login (disabled) — hidden on mobile */}
           <button
             disabled
             title="로그인 기능 준비 중"
-            className="dh-login"
-            style={{
-              padding: '7px 16px', background: 'transparent',
-              color: '#9ca3af', borderRadius: 999, fontSize: 13, fontWeight: 500,
-              border: '1.5px solid #e5e7eb', cursor: 'not-allowed',
-              whiteSpace: 'nowrap',
-            }}
+            className="dh-login px-4 py-[7px] bg-transparent text-gray-400 dark:text-gray-600 rounded-full text-[13px] font-medium border border-gray-200 dark:border-gray-700 cursor-not-allowed whitespace-nowrap"
           >
             로그인 (준비 중)
           </button>
 
-          {/* Primary CTA — always visible */}
+          {/* Primary CTA */}
           <a
             href="/#service"
-            style={{
-              padding: '7px 18px',
-              background: 'linear-gradient(135deg,#667eea,#764ba2)',
-              color: '#fff', borderRadius: 999, fontSize: 13, fontWeight: 600,
-              textDecoration: 'none', flexShrink: 0,
-              boxShadow: '0 4px 14px rgba(102,126,234,0.4)',
-              whiteSpace: 'nowrap',
-            }}
+            className="px-[18px] py-[7px] bg-gradient-to-br from-[#667eea] to-[#764ba2] text-white rounded-full text-[13px] font-semibold no-underline shrink-0 shadow-[0_4px_14px_rgba(102,126,234,0.4)] whitespace-nowrap"
           >
             지금 시작하기
           </a>
