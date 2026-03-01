@@ -1,5 +1,5 @@
-// Groq/Replit study-plan API client: vision-first engine with Replit fallback.
-// GROQ_API_KEY set -> llama-3.2-11b-vision-preview (multi-modal, direct)
+// Groq/Replit study-plan API client: multi-slot vision engine with Replit fallback.
+// GROQ_API_KEY set -> meta-llama/llama-4-scout-17b-16e-instruct (batched, ≤5 img/call)
 // No key -> Replit upstream proxy with DEMO_PLAN fallback.
 
 import Groq from "groq-sdk";
@@ -13,8 +13,9 @@ const REPLIT_PLAN_URL =
   "https://groq-chatbot-backend--ghimdohyun.replit.app/api/generate-plan";
 
 const UPSTREAM_TIMEOUT_MS = 45_000;
-const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";  // Llama 4 Scout (multimodal)
-const TEXT_MODEL   = "llama-3.3-70b-versatile";
+const VISION_MODEL    = "meta-llama/llama-4-scout-17b-16e-instruct"; // Llama 4 Scout (multimodal)
+const TEXT_MODEL      = "llama-3.3-70b-versatile";
+const VISION_BATCH_SIZE = 5; // Groq vision API: max 5 images per call
 
 // Build-safe: only instantiated when key is present
 const groq: Groq | null = GROQ_API_KEY
@@ -184,38 +185,114 @@ export const DEMO_PLAN = {
   },
 } as const;
 
-// ─── Groq vision call (multi-modal) ──────────────────────────────────────────
+// ─── Vision helpers ────────────────────────────────────────────────────────────
 
 function splitImageUrls(imageUrl: string): string[] {
   return imageUrl.split("|||").map((u) => u.trim()).filter(Boolean);
 }
 
+/** Low-level: single Groq vision API call — caller must ensure ≤5 image parts */
+async function callGroqVisionOnce(
+  messages: Groq.Chat.ChatCompletionMessageParam[]
+): Promise<unknown> {
+  const completion = await groq!.chat.completions.create({
+    model: VISION_MODEL,
+    messages,
+    temperature: 0.25,
+    max_tokens: 4096,
+    response_format: { type: "json_object" },
+  });
+  const raw = completion.choices[0]?.message?.content ?? "{}";
+  try { return JSON.parse(raw); } catch { return { reply: raw }; }
+}
+
+/** Context-merge prompt for batch N (1-based) — passes previous JSON result */
+function buildMergePrompt(
+  studentInfo: string,
+  previousJson: string,
+  batchIdx: number,
+  totalBatches: number
+): string {
+  return `[멀티 이미지 분석 — 배치 ${batchIdx + 1}/${totalBatches}: 보조 이미지 통합]
+
+이전 배치 분석 결과 (JSON):
+${previousJson}
+
+위 계획을 기반으로, 새로 제공된 이미지(교양 편성표·추가 자료)를 분석하여 계획을 보완·개선하라.
+
+## 학생 정보
+${studentInfo}
+
+## 핵심 강제 원칙 (절대 유지)
+- 전산수학(EO203): Plan A~D 모두 반드시 포함 (누락 불가)
+- 리눅스(EO209): 절대 제외
+- 금요일 공강: day 필드에 "금/fri/Fri" 절대 불가
+- 21학점: 각 Plan 총학점 정확히 21학점 유지
+
+추가 이미지 정보를 반영한 개선된 완전한 JSON만 반환하라.
+응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음).`;
+}
+
+// ─── Groq vision call: auto-batched (VISION_BATCH_SIZE=5 per API call) ────────
+//
+// Priority:  images[0..4]  → Batch 0: full initial analysis  (전공 교육과정표 우선)
+//            images[5..9]  → Batch 1: context-merge          (교양 편성표 등 보조)
+//            images[10..N] → Batch N: final context-merge
+//
 async function callGroqVision(
   studentInfo: string,
   timetableInfo: string,
   imageUrl: string
 ): Promise<unknown> {
-  const prompt = buildPrompt(studentInfo, timetableInfo);
-  const urls = splitImageUrls(imageUrl);
+  const allUrls = splitImageUrls(imageUrl);
 
-  const content: Groq.Chat.ChatCompletionContentPart[] = [
-    { type: "text", text: prompt },
-    ...urls.map((url): Groq.Chat.ChatCompletionContentPart => ({
+  // ── Single-batch path (≤5 images): one API call ──
+  if (allUrls.length <= VISION_BATCH_SIZE) {
+    const content: Groq.Chat.ChatCompletionContentPart[] = [
+      { type: "text", text: buildPrompt(studentInfo, timetableInfo) },
+      ...allUrls.map((url): Groq.Chat.ChatCompletionContentPart => ({
+        type: "image_url",
+        image_url: { url },
+      })),
+    ];
+    return callGroqVisionOnce([{ role: "user", content }]);
+  }
+
+  // ── Multi-batch path (>5 images): sequential context-merge ──
+  const batches: string[][] = [];
+  for (let i = 0; i < allUrls.length; i += VISION_BATCH_SIZE) {
+    batches.push(allUrls.slice(i, i + VISION_BATCH_SIZE));
+  }
+
+  // Batch 0: Full initial analysis — first 5 images (핵심 전공 편성표 우선)
+  const firstContent: Groq.Chat.ChatCompletionContentPart[] = [
+    { type: "text", text: buildPrompt(studentInfo, timetableInfo) },
+    ...batches[0].map((url): Groq.Chat.ChatCompletionContentPart => ({
       type: "image_url",
       image_url: { url },
     })),
   ];
+  let accumulated = await callGroqVisionOnce([{ role: "user", content: firstContent }]);
 
-  const completion = await groq!.chat.completions.create({
-    model: VISION_MODEL,
-    messages: [{ role: "user", content }],
-    temperature: 0.25,
-    max_tokens: 4096,
-    response_format: { type: "json_object" },
-  });
+  // Batch 1+: Context-merge each subsequent batch (보조 이미지 통합)
+  for (let i = 1; i < batches.length; i++) {
+    const mergeText = buildMergePrompt(
+      studentInfo,
+      JSON.stringify(accumulated),
+      i,
+      batches.length
+    );
+    const mergeContent: Groq.Chat.ChatCompletionContentPart[] = [
+      { type: "text", text: mergeText },
+      ...batches[i].map((url): Groq.Chat.ChatCompletionContentPart => ({
+        type: "image_url",
+        image_url: { url },
+      })),
+    ];
+    accumulated = await callGroqVisionOnce([{ role: "user", content: mergeContent }]);
+  }
 
-  const raw = completion.choices[0]?.message?.content ?? "{}";
-  try { return JSON.parse(raw); } catch { return { reply: raw }; }
+  return accumulated;
 }
 
 // ─── Groq text-only call ──────────────────────────────────────────────────────

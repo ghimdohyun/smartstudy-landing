@@ -7,8 +7,13 @@ import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from
 
 // ─── Step-by-step loading messages ───────────────────────────────────────────
 
-const LOADING_STEPS = [
-  '서강대 커리큘럼 데이터 로드 중...',
+const VISION_BATCH_SIZE = 5; // must match lib/groq.ts
+
+const SINGLE_STEP_MS = 2500;
+const MULTI_STEP_MS  = 7500; // each batch takes ~8-12s on Groq
+
+const BASE_STEPS = [
+  '경성대 커리큘럼 데이터 로드 중...',
   '학생 프로필 분석 중...',
   '최적의 수강 조합 탐색 중...',
   'Plan A~D 시간표 구성 중...',
@@ -16,7 +21,27 @@ const LOADING_STEPS = [
   '최종 결과 정리 중...',
 ] as const;
 
-const STEP_INTERVAL_MS = 2500;
+/** Builds progress step messages based on uploaded image count */
+function buildLoadingSteps(imageCount: number): string[] {
+  if (imageCount <= VISION_BATCH_SIZE) {
+    return [...BASE_STEPS];
+  }
+  const batchCount = Math.ceil(imageCount / VISION_BATCH_SIZE);
+  const steps: string[] = [
+    `총 ${imageCount}장 이미지 감지 — ${batchCount}개 배치로 분할 분석 시작...`,
+  ];
+  for (let i = 1; i <= batchCount; i++) {
+    const from = (i - 1) * VISION_BATCH_SIZE + 1;
+    const to   = Math.min(i * VISION_BATCH_SIZE, imageCount);
+    steps.push(
+      `이미지를 분석 중입니다... (${i}/${batchCount} 배치 — ${from}~${to}번 이미지)`
+    );
+  }
+  steps.push('전공 편성표 + 교양 편성표 결과 통합 중...');
+  steps.push('Plan A~D 시간표 최종 구성 중...');
+  steps.push('1년 학습 로드맵 생성 중...');
+  return steps;
+}
 
 // ─── Error normalization ──────────────────────────────────────────────────────
 
@@ -56,18 +81,23 @@ export function useStudyPlan() {
   const [upgradeDetail, setUpgradeDetail] = useState<UpgradeRequiredDetail | null>(null);
 
   /** Stored last input for retry support */
-  const lastInputRef = useRef<StudyPlanInput | null>(null);
-  const stepIndexRef = useRef(0);
+  const lastInputRef   = useRef<StudyPlanInput | null>(null);
+  const stepIndexRef   = useRef(0);
+  const stepsRef       = useRef<string[]>([...BASE_STEPS]);
+  const stepIntervalRef = useRef(SINGLE_STEP_MS);
 
-  // Cycle through loading step messages while loading
+  // Cycle through dynamic loading step messages while loading
   useEffect(() => {
     if (!loading) return;
+    const steps      = stepsRef.current;
+    const intervalMs = stepIntervalRef.current;
     stepIndexRef.current = 0;
-    setStatus(LOADING_STEPS[0]);
+    setStatus(steps[0]);
     const id = setInterval(() => {
-      stepIndexRef.current = (stepIndexRef.current + 1) % LOADING_STEPS.length;
-      setStatus(LOADING_STEPS[stepIndexRef.current]);
-    }, STEP_INTERVAL_MS);
+      // Clamp at last step (don't wrap) — real completion sets its own message
+      stepIndexRef.current = Math.min(stepIndexRef.current + 1, steps.length - 1);
+      setStatus(steps[stepIndexRef.current]);
+    }, intervalMs);
     return () => clearInterval(id);
   }, [loading]);
 
@@ -80,6 +110,11 @@ export function useStudyPlan() {
       setError('시간표 이미지를 업로드하거나 URL을 입력해주세요.');
       return;
     }
+
+    // Build dynamic step messages based on image count
+    const imageCount = input.imageUrl.split('|||').filter(Boolean).length;
+    stepsRef.current       = buildLoadingSteps(imageCount);
+    stepIntervalRef.current = imageCount > VISION_BATCH_SIZE ? MULTI_STEP_MS : SINGLE_STEP_MS;
 
     lastInputRef.current = input;
     setError(null);
