@@ -42,14 +42,14 @@ export default function HeroSection() {
 
         {/* Sub-copy */}
         <p className="text-[17px] leading-[1.75] m-0 mb-2 max-w-[520px] mx-auto
-                      text-slate-600 dark:text-slate-300">
+                      text-slate-600 dark:text-slate-200">
           잘 짠 시간표 하나가 학점을 바꿉니다.
         </p>
         <p className="text-[17px] leading-[1.75] m-0 mb-11 max-w-[520px] mx-auto
-                      text-slate-600 dark:text-slate-300">
+                      text-slate-600 dark:text-slate-200">
           AI 최적화로{' '}
-          <strong className="text-slate-800 dark:text-slate-100">공강은 늘리고</strong>{' '}
-          <strong className="text-slate-800 dark:text-slate-100">성적은 높이세요.</strong>
+          <strong className="text-slate-800 dark:text-white">공강은 늘리고</strong>{' '}
+          <strong className="text-slate-800 dark:text-white">성적은 높이세요.</strong>
         </p>
 
         {/* CTA buttons */}

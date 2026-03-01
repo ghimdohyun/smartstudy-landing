@@ -143,18 +143,24 @@ export default function TimetableGrid({ plans }: Props) {
           <div ref={gridRef}
             className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700
                         bg-white dark:bg-slate-900 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-            <table className="w-full border-collapse" style={{ minWidth: 520 }}>
+            {/* table-fixed + explicit colgroup prevents time-axis column from collapsing */}
+            <table className="w-full border-collapse table-fixed" style={{ minWidth: 560 }}>
+              <colgroup>
+                <col style={{ width: 72 }} />
+                {DAYS.map((d) => <col key={d} />)}
+              </colgroup>
               <thead>
                 <tr>
-                  {/* Time axis header cell */}
-                  <th className="py-2.5 px-2 text-[11px] font-bold text-center text-slate-400 dark:text-slate-500
+                  {/* Time axis header cell — fixed width, never clips */}
+                  <th className="py-2.5 px-1.5 text-[11px] font-bold text-center text-slate-400 dark:text-slate-400
                                   border-b border-slate-200 dark:border-slate-700
-                                  bg-slate-50 dark:bg-slate-800/50 w-[68px] shrink-0">
+                                  bg-slate-50 dark:bg-slate-800/50"
+                      style={{ width: 72, minWidth: 72 }}>
                     교시
                   </th>
                   {DAYS.map((d) => (
                     <th key={d} className="py-2.5 px-2 text-[12px] font-bold text-center
-                                            text-slate-500 dark:text-slate-400
+                                            text-slate-600 dark:text-slate-200
                                             border-b border-slate-200 dark:border-slate-700
                                             bg-slate-50 dark:bg-slate-800/50">
                       {d}요일
@@ -168,11 +174,13 @@ export default function TimetableGrid({ plans }: Props) {
                   // If course has periodIdx, render in that row; if null, assign to first unfilled row
                   return (
                     <tr key={pIdx} className="align-top border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
-                      {/* Time label */}
-                      <td className="px-2 py-1.5 text-center border-r border-slate-100 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-800/30 shrink-0">
+                      {/* Time label — matches fixed 72px column width */}
+                      <td className="px-1.5 py-1.5 text-center border-r border-slate-100 dark:border-slate-800
+                                     bg-slate-50/60 dark:bg-slate-800/30"
+                          style={{ width: 72, minWidth: 72 }}>
                         <div className="flex flex-col items-center">
-                          <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 leading-tight">{period.label}</span>
-                          <span className="text-[9px] text-slate-400 dark:text-slate-600 leading-tight">{period.time}</span>
+                          <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight whitespace-nowrap">{period.label}</span>
+                          <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">{period.time}</span>
                         </div>
                       </td>
                       {DAYS.map((d) => {

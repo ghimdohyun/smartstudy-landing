@@ -214,6 +214,35 @@ export function findCourseInChunks(chunks: PdfChunk[], courseCode: string): Vali
   return { found: false };
 }
 
+// ─── Curriculum Line Slicer (Noise Reduction) ────────────────────────────────
+//
+// Keeps only lines likely to be curriculum data: course codes, 이수구분 labels,
+// 학점/강의 columns. Drops 학칙, 인사말, 공지사항, 대학 소개 boilerplate.
+
+const CURRICULUM_LINE_KEYWORDS = [
+  "교과목명", "학수번호", "이수구분", "학점", "강의", "실습",
+  "전공필수", "전공선택", "전공기초", "전공심화",
+  "교양필수", "교양선택", "공통필수", "공통선택",
+  "이수학점", "졸업학점", "졸업요건", "이수구조",
+  "전산수학", "리눅스", "소프트웨어", " EO", " QY",
+];
+
+const COURSE_CODE_RE = /\b[A-Z]{2,3}\d{3,4}[A-Z]?\b/;
+
+/**
+ * Filter text to only curriculum-relevant lines — reduces noise fed to the AI.
+ */
+export function sliceCurriculumLines(text: string): string {
+  return text
+    .split(/[\n\r]+/)
+    .filter((line) => {
+      const t = line.trim();
+      if (t.length < 4) return false;
+      return CURRICULUM_LINE_KEYWORDS.some((kw) => t.includes(kw)) || COURSE_CODE_RE.test(t);
+    })
+    .join("\n");
+}
+
 // ─── LLM Context Builder ──────────────────────────────────────────────────────
 
 export function buildCurriculumContext(chunks: PdfChunk[], courses: CourseRow[], universityId?: string): string {
@@ -221,9 +250,16 @@ export function buildCurriculumContext(chunks: PdfChunk[], courses: CourseRow[],
   const courseLines = courses.length > 0
     ? courses.slice(0, 60).map((c) => `  ${c.code} ${c.name} ${c.credits}학점 (${c.category})`).join("\n")
     : "  (구조적 파싱 결과 없음 — 청크 텍스트 직접 참조)";
+
+  // Apply noise-reduction slicing before sending chunk text to AI
   const chunkTexts = chunks
-    .map((c) => `[${c.startPage}-${c.endPage}페이지]\n${c.text.slice(0, 800)}`)
+    .map((c) => {
+      const filtered = sliceCurriculumLines(c.text);
+      // Use filtered if substantial; fallback to raw truncation
+      const display  = filtered.length > 80 ? filtered.slice(0, 900) : c.text.slice(0, 800);
+      return `[${c.startPage}-${c.endPage}페이지]\n${display}`;
+    })
     .join("\n\n---\n\n");
 
-  return [header, "", "## 추출된 교과목 목록", courseLines, "", "## 관련 편람 내용 (상위 청크)", chunkTexts].join("\n");
+  return [header, "", "## 추출된 교과목 목록", courseLines, "", "## 관련 편람 내용 (노이즈 필터 적용)", chunkTexts].join("\n");
 }

@@ -44,6 +44,20 @@ export function buildPrompt(studentInfo: string, timetableInfo: string, universi
 
   return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
 
+## 역할 선언
+너는 대학 수강신청 전문가이다. 제공된 편람 데이터를 기반으로 전공(소프트웨어 계열)과 교양 필수 과목을 최우선으로 배치하라.
+
+## 강제 출력 원칙 (위반 불가)
+1. Plan A~D는 반드시 서로 다른 테마를 가져야 한다 (동일 구성 절대 불가):
+   - Plan A (안정): 이수 부담 최소, 공강 확보 전략
+   - Plan B (도전): 전공심화 극대화 전략
+   - Plan C (꿀강): GPA 최적화, 강의평가 우수 과목 중심
+   - Plan D (전공집중): 졸업요건 최적화 전략
+2. courses[].day: 반드시 한글 요일로 정확히 기입 (예: "월수금", "화목")
+   courses[].time: 반드시 교시 또는 시간으로 기입 (예: "1교시", "09:00")
+3. 깨진 텍스트(비표준 문자 포함 출력)를 절대 금지하고 표준 한국어만 사용하라
+4. 과목명·학수번호는 편람에 실제 존재하는 것만 사용하라
+
 제공된 [시간표 이미지], [학생 정보], [지침서 설명]을 융합 분석하여 아래 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
 
 ## 학생 정보
@@ -417,14 +431,28 @@ export interface StudyPlanCallParams {
  * 2. GROQ_API_KEY, no image  -> llama-3.3-70b-versatile (text)
  * 3. No key                  -> Replit proxy + DEMO_PLAN fallback
  */
+/** Validate AI result has at least one plan — prevents Empty Plan crash downstream */
+function isValidPlanResult(result: unknown): boolean {
+  if (!result || typeof result !== "object") return false;
+  const r = result as Record<string, unknown>;
+  return Boolean(r.planA || r.planB || r.plans);
+}
+
 export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unknown> {
   const { studentInfo, timetableInfo, imageUrl, universityId } = params;
 
   if (groq) {
     try {
-      return imageUrl?.trim()
+      const result = imageUrl?.trim()
         ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId)
         : await callGroqText(studentInfo, timetableInfo, universityId);
+
+      // Fallback: if AI returned empty/malformed JSON, use demo plan rather than crashing
+      if (!isValidPlanResult(result)) {
+        console.warn("[callStudyPlanApi] AI returned empty or invalid plan — using DEMO_PLAN fallback");
+        return { ...DEMO_PLAN, _isDemo: true };
+      }
+      return result;
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new UpstreamError(500, `Groq API 오류: ${msg}`);
