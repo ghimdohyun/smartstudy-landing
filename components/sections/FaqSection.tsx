@@ -54,7 +54,7 @@ export default function FaqSection() {
           <h2 className="text-[clamp(24px,4vw,34px)] font-extrabold text-gray-900 dark:text-white m-0 mb-3 tracking-tight">
             FAQ
           </h2>
-          <p className="text-[14px] text-gray-500 dark:text-gray-400 m-0">
+          <p className="text-[14px] text-gray-500 dark:text-slate-300 m-0">
             궁금한 점이 더 있다면 우측 하단 상담 AI에게 물어보세요.
           </p>
         </div>
@@ -82,8 +82,8 @@ export default function FaqSection() {
                   <span className={[
                     "text-[14px] font-semibold leading-relaxed",
                     isOpen
-                      ? "text-violet-700 dark:text-violet-400"
-                      : "text-gray-900 dark:text-gray-100",
+                      ? "text-violet-700 dark:text-violet-300"
+                      : "text-gray-900 dark:text-white",
                   ].join(" ")}>
                     {item.q}
                   </span>
@@ -91,7 +91,7 @@ export default function FaqSection() {
                     "text-[18px] shrink-0 transition-transform duration-200 inline-block",
                     isOpen
                       ? "text-violet-600 dark:text-violet-400 rotate-45"
-                      : "text-gray-400 dark:text-gray-500",
+                      : "text-gray-400 dark:text-slate-400",
                   ].join(" ")}>
                     +
                   </span>
@@ -100,7 +100,7 @@ export default function FaqSection() {
                 {/* Answer */}
                 {isOpen && (
                   <div className="px-5 pb-[18px] border-t border-gray-100 dark:border-slate-800">
-                    <p className="mt-3.5 mb-0 text-[14px] text-gray-600 dark:text-gray-300 leading-[1.75]">
+                    <p className="mt-3.5 mb-0 text-[14px] text-gray-600 dark:text-slate-200 leading-[1.75]">
                       {item.a}
                     </p>
                   </div>

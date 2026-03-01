@@ -31,31 +31,48 @@ const PLAN_COLORS: { bg: string; text: string; border: string; label: string }[]
   { bg: "bg-orange-100 dark:bg-orange-900/40", text: "text-orange-800 dark:text-orange-200", border: "border-orange-200 dark:border-orange-700", label: "Plan D" },
 ];
 
-/** Parse "월,수,금" or "월수금" or "화목" → ["월","수","금"] */
-function parseDays(raw: string | undefined): Day[] {
-  if (!raw) return [];
-  const normalized = raw.replace(/[,、·/\s]+/g, ",");
-  const tokens = normalized.split(",").map((t) => t.trim());
-  return tokens.filter((t): t is Day => (DAYS as readonly string[]).includes(t));
+/**
+ * Safe parser — accepts unknown input (non-string, null, undefined, broken chars).
+ * Wraps all logic in try-catch; returns [] on any failure.
+ * Handles "월,수,금", "월수금", "화목", comma/·/slash/whitespace delimiters.
+ */
+function safeParseDay(raw?: unknown): Day[] {
+  try {
+    if (raw == null) return [];
+    const str = String(raw).trim();
+    if (!str) return [];
+    const normalized = str.replace(/[,、·/\s]+/g, ",");
+    const tokens = normalized.split(",").map((t) => t.trim()).filter(Boolean);
+    return tokens.filter((t): t is Day => (DAYS as readonly string[]).includes(t));
+  } catch {
+    return [];
+  }
 }
 
-/** Try to extract a 교시 index (0-based) from a time string like "3교시", "3", "11:00" */
-function parsePeriodIndex(time: string | undefined): number | null {
-  if (!time) return null;
-  // "3교시" or just "3"
-  const koMatch = time.match(/(\d+)교시/);
-  if (koMatch) {
-    const n = parseInt(koMatch[1], 10);
-    if (n >= 1 && n <= 9) return n - 1;
+/**
+ * Safe parser — accepts unknown input for period/time fields.
+ * Returns 0-based 교시 index (0=1교시…8=9교시), or null if unparseable.
+ * Handles "3교시", "09:00", "9:00".
+ */
+function safeParseTime(raw?: unknown): number | null {
+  try {
+    if (raw == null) return null;
+    const str = String(raw).trim();
+    if (!str) return null;
+    const koMatch = str.match(/(\d+)교시/);
+    if (koMatch) {
+      const n = parseInt(koMatch[1], 10);
+      if (n >= 1 && n <= 9) return n - 1;
+    }
+    const timeMatch = str.match(/(\d{1,2}):(\d{2})/);
+    if (timeMatch) {
+      const hour = parseInt(timeMatch[1], 10);
+      if (hour >= 9 && hour <= 17) return hour - 9;
+    }
+    return null;
+  } catch {
+    return null;
   }
-  // "09:00" or "9:00" → map to nearest 교시 (each starts on the hour)
-  const timeMatch = time.match(/(\d{1,2}):(\d{2})/);
-  if (timeMatch) {
-    const hour = parseInt(timeMatch[1], 10);
-    // 교시 1 = 09:00, 교시N = 08+N
-    if (hour >= 9 && hour <= 17) return hour - 9;
-  }
-  return null;
 }
 
 interface CourseBlock {
@@ -78,13 +95,19 @@ export default function TimetableGrid({ plans }: Props) {
     월: [], 화: [], 수: [], 목: [], 금: [],
   };
 
-  plans.forEach((plan, pi) => {
-    (plan.courses ?? []).forEach((c) => {
-      const days = parseDays(c.day);
+  (plans ?? []).forEach((plan, pi) => {
+    (plan?.courses ?? []).forEach((c) => {
+      const days = safeParseDay(c?.day);
       if (days.length === 0) return;
-      const periodIdx = parsePeriodIndex(c.time);
+      const periodIdx = safeParseTime(c?.time);
       days.forEach((d) => {
-        grid[d].push({ planIdx: pi, name: c.name, credits: c.credits, req: c.requirement, periodIdx });
+        grid[d].push({
+          planIdx: pi,
+          name: c?.name ?? "과목명 없음",
+          credits: c?.credits,
+          req: c?.requirement,
+          periodIdx,
+        });
       });
     });
   });
@@ -119,7 +142,7 @@ export default function TimetableGrid({ plans }: Props) {
     <div className="mt-2">
       {/* Legend */}
       <div className="flex flex-wrap gap-2 mb-4">
-        {plans.map((plan, i) => {
+        {(plans ?? []).map((plan, i) => {
           const c = PLAN_COLORS[i % PLAN_COLORS.length];
           return (
             <span key={i} className={cn(
@@ -128,8 +151,8 @@ export default function TimetableGrid({ plans }: Props) {
             )}>
               <span className="w-2 h-2 rounded-full"
                 style={{ background: "currentColor" }} />
-              {plan.label ?? c.label}
-              {plan.totalCredits !== undefined && (
+              {plan?.label ?? c.label}
+              {plan?.totalCredits !== undefined && (
                 <span className="opacity-70 font-normal">{plan.totalCredits}학점</span>
               )}
             </span>

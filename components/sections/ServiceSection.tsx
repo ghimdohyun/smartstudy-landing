@@ -87,7 +87,7 @@ function StepGuide() {
           {i < STEPS.length - 1 && (
             <span className="hidden sm:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10
                              w-4 h-4 items-center justify-center
-                             text-[10px] text-slate-400 dark:text-slate-400">▶</span>
+                             text-[10px] text-slate-400 dark:text-slate-300">▶</span>
           )}
           <div className="flex flex-col items-center text-center
                           bg-white dark:bg-slate-900/60

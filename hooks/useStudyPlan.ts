@@ -68,6 +68,60 @@ function normalizeError(err: unknown): string {
   return '알 수 없는 오류가 발생했습니다. 잠시 후 다시 시도해주세요.';
 }
 
+// ─── Structure validation + client-side DEMO_PLAN fallback ───────────────────
+
+/** Minimal demo result served when the AI response structure is broken. */
+const CLIENT_DEMO: StudyPlanResult = {
+  isDemo: true,
+  plans: [
+    {
+      label: 'Plan A — 데모 (AI 재시도 권장)',
+      totalCredits: 18,
+      courses: [
+        { name: '데이터구조', credits: 3, requirement: '전공기초', day: '월,수', time: '1교시' },
+        { name: '알고리즘', credits: 3, requirement: '전공선택', day: '화,목', time: '2교시' },
+        { name: '자료구조실습', credits: 1, requirement: '전공기초', day: '금', time: '3교시' },
+      ],
+    },
+    {
+      label: 'Plan B — 데모 (AI 재시도 권장)',
+      totalCredits: 15,
+      courses: [
+        { name: '운영체제', credits: 3, requirement: '전공필수', day: '월,수', time: '2교시' },
+        { name: '데이터베이스', credits: 3, requirement: '전공선택', day: '화,목', time: '3교시' },
+      ],
+    },
+    {
+      label: 'Plan C — 데모 (AI 재시도 권장)',
+      totalCredits: 16,
+      courses: [
+        { name: '소프트웨어공학', credits: 3, requirement: '전공선택', day: '월,수,금', time: '1교시' },
+        { name: '컴퓨터네트워크', credits: 3, requirement: '전공선택', day: '화,목', time: '1교시' },
+      ],
+    },
+    {
+      label: 'Plan D — 데모 (AI 재시도 권장)',
+      totalCredits: 12,
+      courses: [
+        { name: '인공지능', credits: 3, requirement: '전공선택', day: '월,수', time: '3교시' },
+        { name: '머신러닝', credits: 3, requirement: '전공선택', day: '화,목', time: '4교시' },
+      ],
+    },
+  ],
+};
+
+/**
+ * Validates that the AI response has the expected shape before rendering.
+ * Returns false if plans/yearPlan are missing or obviously malformed.
+ */
+function validateStructure(data: unknown): boolean {
+  if (!data || typeof data !== 'object') return false;
+  const d = data as Record<string, unknown>;
+  const hasPlans    = Array.isArray(d.plans) && d.plans.length > 0;
+  const hasYearPlan = d.yearPlan && typeof d.yearPlan === 'object';
+  return hasPlans || Boolean(hasYearPlan);
+}
+
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useStudyPlan() {
@@ -129,7 +183,10 @@ export function useStudyPlan() {
     setLoading(true);
 
     try {
-      const data = await fetchStudyPlan(enrichedInput);
+      const raw = await fetchStudyPlan(enrichedInput);
+      // Guard: if AI returned an empty/malformed structure, replace with
+      // CLIENT_DEMO so the plan page renders safely with no runtime errors.
+      const data: StudyPlanResult = validateStructure(raw) ? raw : CLIENT_DEMO;
       setResult(data);
       setStatus('생성 완료! 플랜 페이지로 이동합니다...');
       if (typeof window !== 'undefined') {

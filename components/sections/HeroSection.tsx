@@ -80,7 +80,7 @@ export default function HeroSection() {
         </div>
 
         {/* Trust bar */}
-        <p className="mt-6 text-[13px] text-slate-500 dark:text-slate-300">
+        <p className="mt-6 text-[13px] text-slate-500 dark:text-slate-200">
           ✦ 지금 바로 사용 가능 &nbsp;·&nbsp; 회원가입 불필요 &nbsp;·&nbsp; 베타 무료
         </p>
 
