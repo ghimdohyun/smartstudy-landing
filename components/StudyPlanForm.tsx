@@ -8,12 +8,12 @@ import { cn } from "@/lib/utils";
 // ─── Agent Progress Log (light emerald) ───────────────────────────────────────
 
 const PDF_STEPS = [
-  { text: "PDF 파일 수신 중...",                       highlight: false },
-  { text: "텍스트 레이어 추출 중...",                    highlight: false },
-  { text: "편람 청크 분할 및 인덱싱 중...",              highlight: false },
-  { text: "소프트웨어학과 커리큘럼 탐색 중...",           highlight: false },
-  { text: "리눅스시스템(EO209) 필수 조건 확인 중...",     highlight: true  }, // ← EO209 강조
-  { text: "AI 컨텍스트 구성 완료",                      highlight: false },
+  { text: "PDF 파일 분석 중...",               highlight: false },
+  { text: "텍스트 레이어 추출 중...",           highlight: false },
+  { text: "편람 청크 분할 및 인덱싱 중...",     highlight: false },
+  { text: "교육과정 커리큘럼 탐색 중...",       highlight: false },
+  { text: "전공필수 이수 조건 확인 중...",       highlight: true  },
+  { text: "AI 컨텍스트 구성 완료",              highlight: false },
 ];
 
 const STEP_INTERVAL_MS = 1100;
@@ -514,7 +514,7 @@ export default function StudyPlanForm({ onSubmit, loading, status, error }: Prop
         {/* Info note */}
         <p className="text-[11px] text-gray-400 text-center leading-relaxed">
           {mode === "plans"
-            ? "Plan A~D · 21학점 · EO203(전산수학) + EO209(리눅스시스템) 포함 · 금요일 공강"
+            ? "Plan A~D · 전공필수 + 교양 균형 · 공강일 확보 · AI 최적화 수강 전략"
             : "1학기/2학기 목표 · 주간 루틴 · 마일스톤 · 리스크 대응 포함"}
         </p>
       </div>

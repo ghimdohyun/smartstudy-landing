@@ -32,7 +32,7 @@ export default function Chatbot() {
   const [input, setInput] = useState('');
   const [universityId, setUniversityId] = useState('kyungsung-sw');
   const messagesRef = useRef<HTMLDivElement>(null);
-  const { messages, loading, send } = useChat();
+  const { messages, loading, send, reset } = useChat();
 
   // Re-read university selection whenever the chatbot is opened
   useEffect(() => {
@@ -112,20 +112,35 @@ export default function Chatbot() {
               수강신청 상담 AI
             </p>
             <p style={{ margin: 0, fontSize: 11, opacity: 0.82, lineHeight: 1.2 }}>
-              {config.name} {config.department} 어시스턴트
+              수강신청 · 학점 이수 어시스턴트
             </p>
           </div>
         </div>
-        <button
-          onClick={() => setOpen(false)}
-          style={{
-            background: 'none', border: 'none', color: 'white', fontSize: 22,
-            cursor: 'pointer', lineHeight: 1, opacity: 0.8, padding: '4px 6px',
-          }}
-          aria-label="닫기"
-        >
-          ×
-        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 4 }}>
+          <button
+            onClick={reset}
+            title="대화 초기화"
+            style={{
+              background: 'rgba(255,255,255,0.15)', border: '1px solid rgba(255,255,255,0.25)',
+              color: 'white', fontSize: 11, fontWeight: 600,
+              cursor: 'pointer', lineHeight: 1, opacity: 0.85,
+              padding: '4px 8px', borderRadius: 6,
+            }}
+            aria-label="대화 초기화"
+          >
+            초기화
+          </button>
+          <button
+            onClick={() => setOpen(false)}
+            style={{
+              background: 'none', border: 'none', color: 'white', fontSize: 22,
+              cursor: 'pointer', lineHeight: 1, opacity: 0.8, padding: '4px 6px',
+            }}
+            aria-label="닫기"
+          >
+            ×
+          </button>
+        </div>
       </div>
 
       {/* ── Messages ── */}

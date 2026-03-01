@@ -38,5 +38,9 @@ export function useChat() {
     }
   }, []);
 
-  return { messages, loading, send };
+  const reset = useCallback(() => {
+    setMessages([{ id: 'init', role: 'assistant', content: '안녕하세요! 무엇을 도와드릴까요?' }]);
+  }, []);
+
+  return { messages, loading, send, reset };
 }

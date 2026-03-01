@@ -1,4 +1,4 @@
-// Hero section: headline, CTA, and mock plan preview
+// Hero section — new slogan + sub-copy, dark-mode text contrast
 
 const MOCK_PLANS = [
   { label: 'Plan A', bg: '#dbeafe', color: '#1d4ed8', text: '학점 극대화 전략 — 18학점' },
@@ -9,54 +9,51 @@ const MOCK_PLANS = [
 
 export default function HeroSection() {
   return (
-    <section style={{
-      padding: 'clamp(56px, 10vw, 96px) 20px 64px',
-      textAlign: 'center',
-      background: 'linear-gradient(180deg, #f0f4ff 0%, rgba(240,244,255,0) 100%)',
-      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-    }}>
+    <section
+      className="py-[clamp(56px,10vw,96px)] px-5 pb-16 text-center
+                 bg-gradient-to-b from-[#f0f4ff] to-transparent
+                 dark:from-slate-950 dark:to-transparent"
+      style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
+    >
       <div style={{ maxWidth: 680, margin: '0 auto' }}>
+
         {/* Beta badge */}
-        <div style={{
-          display: 'inline-flex', alignItems: 'center', gap: 7,
-          padding: '5px 16px', background: '#ede9fe',
-          borderRadius: 999, fontSize: 12, color: '#7c3aed', fontWeight: 600, marginBottom: 28,
-        }}>
-          <span style={{
-            width: 7, height: 7, borderRadius: '50%', background: '#7c3aed', display: 'inline-block',
-          }} />
+        <div className="inline-flex items-center gap-1.5 px-4 py-1.5 mb-7
+                        bg-violet-100 dark:bg-violet-900/40 rounded-full
+                        text-[12px] text-violet-700 dark:text-violet-300 font-semibold">
+          <span className="w-1.5 h-1.5 rounded-full bg-violet-600 dark:bg-violet-400 inline-block" />
           베타 무료 이용 중
         </div>
 
         {/* Headline */}
-        <h1 style={{
-          fontSize: 'clamp(32px, 7vw, 56px)', fontWeight: 800,
-          color: '#0f172a', lineHeight: 1.18, margin: '0 0 20px',
-          letterSpacing: '-1.5px',
-        }}>
-          AI 수강 계획,<br />
+        <h1 className="text-[clamp(28px,6vw,52px)] font-extrabold leading-[1.18]
+                       tracking-tight m-0 mb-5
+                       text-slate-900 dark:text-white">
+          시간표 사진만 올리면,
+          <br />
           <span style={{
             background: 'linear-gradient(135deg,#667eea 20%,#a855f7 80%)',
-            WebkitBackgroundClip: 'text',
-            WebkitTextFillColor: 'transparent',
-            backgroundClip: 'text',
+            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', backgroundClip: 'text',
           }}>
-            5분이면 완성
-          </span>
+            1년치 전공·교양
+          </span>{' '}
+          수강 계획 4안 자동 생성
         </h1>
 
-        {/* Subtext */}
-        <p style={{
-          fontSize: 17, color: '#475569', lineHeight: 1.75,
-          margin: '0 auto 44px', maxWidth: 520,
-        }}>
-          학생 정보와 희망 시간표를 입력하면 서로 다른 전략의{' '}
-          <strong style={{ color: '#374151' }}>수강 계획 4안</strong>과{' '}
-          <strong style={{ color: '#374151' }}>1년 학습 로드맵</strong>을 즉시 생성합니다.
+        {/* Sub-copy */}
+        <p className="text-[17px] leading-[1.75] m-0 mb-2 max-w-[520px] mx-auto
+                      text-slate-600 dark:text-slate-300">
+          잘 짠 시간표 하나가 학점을 바꿉니다.
+        </p>
+        <p className="text-[17px] leading-[1.75] m-0 mb-11 max-w-[520px] mx-auto
+                      text-slate-600 dark:text-slate-300">
+          AI 최적화로{' '}
+          <strong className="text-slate-800 dark:text-slate-100">공강은 늘리고</strong>{' '}
+          <strong className="text-slate-800 dark:text-slate-100">성적은 높이세요.</strong>
         </p>
 
         {/* CTA buttons */}
-        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
+        <div className="flex gap-3 justify-center flex-wrap">
           <a
             href="#service"
             style={{
@@ -71,9 +68,10 @@ export default function HeroSection() {
           </a>
           <a
             href="#features"
+            className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200
+                       border border-slate-200 dark:border-slate-700"
             style={{
-              padding: '14px 28px', background: '#fff', color: '#374151',
-              border: '1.5px solid #e2e8f0', borderRadius: 999, fontSize: 15, fontWeight: 600,
+              padding: '14px 28px', borderRadius: 999, fontSize: 15, fontWeight: 600,
               textDecoration: 'none', display: 'inline-block',
             }}
           >
@@ -82,43 +80,40 @@ export default function HeroSection() {
         </div>
 
         {/* Trust bar */}
-        <p style={{ marginTop: 24, fontSize: 13, color: '#94a3b8' }}>
+        <p className="mt-6 text-[13px] text-slate-400 dark:text-slate-500">
           ✦ 지금 바로 사용 가능 &nbsp;·&nbsp; 회원가입 불필요 &nbsp;·&nbsp; 베타 무료
         </p>
 
         {/* Mock UI preview */}
-        <div style={{
-          marginTop: 52, background: '#fff', borderRadius: 20,
-          boxShadow: '0 28px 80px rgba(15,23,42,0.12), 0 4px 16px rgba(102,126,234,0.08)',
-          padding: '18px 20px', textAlign: 'left', maxWidth: 480, margin: '52px auto 0',
-          border: '1px solid #e2e8f0',
-        }}>
+        <div
+          className="mt-14 bg-white dark:bg-slate-900 rounded-2xl text-left mx-auto
+                     border border-slate-200 dark:border-slate-700"
+          style={{
+            maxWidth: 480,
+            boxShadow: '0 28px 80px rgba(15,23,42,0.12), 0 4px 16px rgba(102,126,234,0.08)',
+            padding: '18px 20px',
+          }}
+        >
           {/* Window dots */}
-          <div style={{ display: 'flex', gap: 6, marginBottom: 16 }}>
+          <div className="flex gap-1.5 mb-4">
             {['#ff5f57', '#ffbd2e', '#28c940'].map((c) => (
-              <span key={c} style={{ width: 10, height: 10, borderRadius: '50%', background: c, display: 'inline-block' }} />
+              <span key={c} className="w-2.5 h-2.5 rounded-full inline-block" style={{ background: c }} />
             ))}
           </div>
           {/* Mock plan rows */}
           {MOCK_PLANS.map(({ label, bg, color, text }) => (
-            <div key={label} style={{
-              display: 'flex', alignItems: 'center', gap: 10,
-              padding: '9px 12px', background: '#f9fafb',
-              borderRadius: 10, marginBottom: 7,
-            }}>
-              <span style={{
-                padding: '3px 11px', background: bg, color, borderRadius: 999,
-                fontSize: 11, fontWeight: 700, flexShrink: 0,
-              }}>
+            <div key={label}
+              className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl mb-2
+                         bg-slate-50 dark:bg-slate-800">
+              <span className="text-[11px] font-bold px-2.5 py-0.5 rounded-full shrink-0"
+                style={{ background: bg, color }}>
                 {label}
               </span>
-              <span style={{ fontSize: 12, color: '#374151' }}>{text}</span>
+              <span className="text-[12px] text-slate-700 dark:text-slate-300">{text}</span>
             </div>
           ))}
-          <div style={{
-            marginTop: 4, padding: '8px 12px', background: '#f0fdf4',
-            borderRadius: 10, fontSize: 12, color: '#166534', fontWeight: 500,
-          }}>
+          <div className="mt-1 px-3 py-2 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl
+                          text-[12px] text-emerald-700 dark:text-emerald-400 font-medium">
             ✓ 1년 학습 로드맵 생성 완료
           </div>
         </div>

@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { StudyPlanResult } from "@/types";
 import PlanCard from "@/components/PlanCard";
+import TimetableGrid from "@/components/TimetableGrid";
 import YearPlanView from "@/components/YearPlanView";
 import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -117,6 +118,7 @@ export default function PlanPage() {
   const [result, setResult] = useState<StudyPlanResult | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [showUpgraded, setShowUpgraded] = useState(false);
+  const [planView, setPlanView] = useState<"card" | "timetable">("card");
 
   useEffect(() => {
     const stored = localStorage.getItem("smartstudy_result");
@@ -221,17 +223,40 @@ export default function PlanPage() {
           </div>
         </div>
 
-        {/* Plan A~D cards */}
+        {/* Plan A~D — card or timetable view */}
         {hasPlans && (
           <section className="mb-2">
-            <h2 className="text-lg font-bold text-black dark:text-white mb-3.5">
-              수강 계획 4안
-            </h2>
-            <div className="flex flex-wrap gap-4">
-              {result.plans!.map((plan, i) => (
-                <PlanCard key={i} plan={plan} index={i} />
-              ))}
+            <div className="flex items-center justify-between mb-3.5 flex-wrap gap-2">
+              <h2 className="text-lg font-bold text-black dark:text-white m-0">
+                수강 계획 4안
+              </h2>
+              {/* View toggle */}
+              <div className="flex rounded-lg border border-slate-200 dark:border-slate-700
+                              overflow-hidden text-[12px] font-semibold bg-white dark:bg-slate-900">
+                {(["card", "timetable"] as const).map((v) => (
+                  <button key={v} type="button" onClick={() => setPlanView(v)}
+                    className={[
+                      "px-3 py-1.5 transition-colors",
+                      v === "timetable" && "border-l border-slate-200 dark:border-slate-700",
+                      planView === v
+                        ? "bg-indigo-600 text-white"
+                        : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+                    ].filter(Boolean).join(" ")}>
+                    {v === "card" ? "카드 보기" : "🗓 시간표 보기"}
+                  </button>
+                ))}
+              </div>
             </div>
+
+            {planView === "card" ? (
+              <div className="flex flex-wrap gap-4">
+                {result.plans!.map((plan, i) => (
+                  <PlanCard key={i} plan={plan} index={i} />
+                ))}
+              </div>
+            ) : (
+              <TimetableGrid plans={result.plans!} />
+            )}
           </section>
         )}
 
