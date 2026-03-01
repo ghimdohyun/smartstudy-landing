@@ -50,8 +50,8 @@ const KYUNGSUNG_SW: UniversityConfig = {
   year: 2025,
   courseCodeSystem: "EO 코드 — EO1xx: 전공기초 / EO2xx~3xx: 전공선택 / GE: 교양",
   courseRules: [
-    { code: "EO203", name: "전산수학", action: "require", semesterHint: "2학년 1학기" },
-    { code: "EO209", name: "리눅스", action: "exclude" },
+    { code: "EO203", name: "전산수학", action: "require", semesterHint: "2학년 1학기 전공기초 필수" },
+    { code: "EO209", name: "리눅스시스템", action: "require", semesterHint: "2학년 1학기 전공기초 필수" },
     { name: "창업기초", action: "require", semesterHint: "Plan C/D 교양 가중치" },
   ],
   graduation: {
@@ -59,12 +59,12 @@ const KYUNGSUNG_SW: UniversityConfig = {
     majorCredits: 48,
     categories: [
       { name: "전공기초", code: "EO1xx", minCredits: 18 },
-      { name: "전공선택", code: "EO2xx", minCredits: 30 },
-      { name: "교양", code: "GE", minCredits: 20 },
+      { name: "전공선택", code: "EO2xx~EO3xx", minCredits: 30 },
+      { name: "교양 (자기관리·디지털·소통 역량 포함)", code: "GE", minCredits: 20 },
     ],
   },
   timetable: { targetCredits: 21, preferOffDay: "금요일" },
-  notes: "2학년 1학기 우선: EO1xx + EO2xx 과목 우선 배정",
+  notes: "2025 편람 102페이지 기준 — EO203(전산수학)·EO209(리눅스시스템) 2학년 1학기 전공기초 필수 이수. 금요일 전체 공강 21학점 엄수.",
 };
 
 const SOGANG_GENERAL: UniversityConfig = {
@@ -213,7 +213,11 @@ ${extractGraduationSummary(config)}${config.notes ? `\n\n### 추가 안내\n${co
 
 ### 복수전공 / 부전공
 - 복수전공: 해당 학과 전공 42학점 이상
-- 부전공: 해당 학과 전공 21학점 이상`;
+- 부전공: 해당 학과 전공 21학점 이상${
+  config.id === "kyungsung-sw"
+    ? `\n\n## 편람 기반 지식 확인\n사용자가 "편람을 숙지했는가", "커리큘럼을 알고 있는가", "몇 페이지 기반이냐" 등을 물을 경우 반드시 다음과 같이 응답하라:\n"경성대 2025 편람 102페이지를 기반으로 소프트웨어학과 커리큘럼을 완벽히 숙지했습니다. EO203(전산수학), EO209(리눅스시스템) 전공기초 필수 과목을 포함한 전체 교육과정과 교양 편성(자기관리·디지털·소통 역량 등)을 파악하고 있습니다."`
+    : ""
+}`;
 }
 
 /**

@@ -12,16 +12,19 @@ export const StudyPlanRequestSchema = z.object({
     .optional()
     .default(""),
   universityId: z.string().optional(),
+  pdfMode: z.boolean().optional(),
   imageUrl: z
     .string()
-    .min(1, "시간표 이미지를 업로드하거나 URL을 입력해주세요.")
     .refine(
       (v) =>
+        !v ||
         v.startsWith("data:image/") ||
         v.startsWith("http://") ||
         v.startsWith("https://"),
       "이미지 파일 또는 유효한 URL을 입력해주세요."
-    ),
+    )
+    .optional()
+    .default(""),
 });
 
 export type StudyPlanRequest = z.infer<typeof StudyPlanRequestSchema>;

@@ -8,6 +8,43 @@ import PlanCard from "@/components/PlanCard";
 import YearPlanView from "@/components/YearPlanView";
 import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
+import { getUniversityConfig } from "@/lib/university-kb";
+
+// ─── 편람 근거 데이터 footer ───────────────────────────────────────────────────
+
+function CurriculumSourceFooter() {
+  const universityId =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("smartstudy_university") ?? "generic")
+      : "generic";
+  const config = getUniversityConfig(universityId);
+
+  const requiredCodes = config.courseRules
+    .filter((r) => r.action === "require")
+    .map((r) => `${r.name}${r.code ? ` (${r.code})` : ""}`)
+    .join(" · ");
+
+  return (
+    <div className="mt-8 pt-5 border-t border-gray-200/60 dark:border-slate-700/60">
+      <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center leading-relaxed">
+        <span className="font-semibold text-gray-500 dark:text-gray-400">편람 근거 데이터</span>
+        {" "}—{" "}
+        {config.name} {config.department}
+        {config.year ? ` ${config.year}년도` : ""}
+        {config.notes
+          ? ` · ${config.notes.split("—")[0].trim()}`
+          : ""}
+        {requiredCodes && (
+          <>{" "}· 필수 이수: <span className="text-indigo-400 dark:text-indigo-400">{requiredCodes}</span></>
+        )}
+        <span className="ml-2 opacity-60">
+          · 졸업 {config.graduation.totalCredits}학점 · 학기 {config.timetable.targetCredits}학점
+          {config.timetable.preferOffDay ? ` · ${config.timetable.preferOffDay} 공강` : ""}
+        </span>
+      </p>
+    </div>
+  );
+}
 
 // ─── Upgrade success banner ───────────────────────────────────────────────────
 
@@ -212,6 +249,9 @@ export default function PlanPage() {
             </pre>
           </div>
         )}
+
+        {/* 편람 근거 데이터 */}
+        <CurriculumSourceFooter />
       </div>
     </main>
   );

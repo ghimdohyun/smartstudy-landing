@@ -106,13 +106,13 @@ export function useStudyPlan() {
       setError('학생 정보를 입력해주세요.');
       return;
     }
-    if (!input.imageUrl?.trim()) {
-      setError('시간표 이미지를 업로드하거나 URL을 입력해주세요.');
+    if (!input.imageUrl?.trim() && !input.pdfMode) {
+      setError('시간표 이미지를 업로드하거나 PDF를 업로드해주세요.');
       return;
     }
 
     // Build dynamic step messages based on image count
-    const imageCount = input.imageUrl.split('|||').filter(Boolean).length;
+    const imageCount = (input.imageUrl ?? '').split('|||').filter(Boolean).length;
     stepsRef.current       = buildLoadingSteps(imageCount);
     stepIntervalRef.current = imageCount > VISION_BATCH_SIZE ? MULTI_STEP_MS : SINGLE_STEP_MS;
 

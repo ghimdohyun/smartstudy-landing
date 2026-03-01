@@ -1,4 +1,4 @@
-// Study plan input form — shadcn Tabs + DnD ImageDropZone + Button, dark mode aware
+// Study plan input form — shadcn Tabs + DnD ImageDropZone + PdfDropZone + Button, dark mode aware
 "use client";
 
 import { useState, useRef, useCallback } from "react";
@@ -298,6 +298,195 @@ function ImageDropZone({ value, onChange }: DropZoneProps) {
   );
 }
 
+// ─── PDF Drop Zone ─────────────────────────────────────────────────────────────
+
+interface PdfExtractResult {
+  totalPages: number;
+  chunkCount: number;
+  courseCount: number;
+  curriculumText: string;
+  validation: Record<string, { found: boolean; pageRange?: string }>;
+}
+
+interface PdfDropZoneProps {
+  universityId?: string;
+  onExtracted: (result: PdfExtractResult) => void;
+}
+
+function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
+  const [dragging, setDragging]     = useState(false);
+  const [loading, setLoading]       = useState(false);
+  const [result, setResult]         = useState<PdfExtractResult | null>(null);
+  const [error, setError]           = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  const uploadPdf = useCallback(async (file: File) => {
+    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
+      setError("PDF 파일만 업로드할 수 있습니다.");
+      return;
+    }
+
+    setLoading(true);
+    setError(null);
+    setResult(null);
+
+    try {
+      const formData = new FormData();
+      formData.append("file", file);
+      if (universityId) formData.append("universityId", universityId);
+
+      const res = await fetch("/api/pdf-extract", { method: "POST", body: formData });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(err.error ?? `오류 ${res.status}`);
+      }
+
+      const data = await res.json() as PdfExtractResult;
+      setResult(data);
+      onExtracted(data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "PDF 분석 실패");
+    } finally {
+      setLoading(false);
+    }
+  }, [universityId, onExtracted]);
+
+  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) uploadPdf(file);
+  }, [uploadPdf]);
+
+  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadPdf(file);
+    e.target.value = "";
+  };
+
+  // Success state
+  if (result) {
+    const eo203 = result.validation?.["EO203"];
+    const eo209 = result.validation?.["EO209"];
+    return (
+      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 p-4">
+        <div className="flex items-center gap-2 mb-2">
+          <span className="text-2xl">📋</span>
+          <div>
+            <p className="text-[14px] font-bold text-indigo-700 dark:text-indigo-300">
+              {result.totalPages}페이지 분석 완료 · 과목 {result.courseCount}개 추출
+            </p>
+            <p className="text-[11px] text-indigo-500 dark:text-indigo-400">
+              {result.chunkCount}개 청크로 분할 · AI 컨텍스트 준비됨
+            </p>
+          </div>
+        </div>
+        {/* Validation badges */}
+        <div className="flex flex-wrap gap-1.5 mt-2">
+          {eo203 && (
+            <span className={cn(
+              "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+              eo203.found
+                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
+                : "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+            )}>
+              EO203 {eo203.found ? `✓ ${eo203.pageRange ?? ""}` : "✗ 미발견"}
+            </span>
+          )}
+          {eo209 && (
+            <span className={cn(
+              "text-[11px] font-semibold px-2 py-0.5 rounded-full",
+              eo209.found
+                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
+                : "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
+            )}>
+              EO209 {eo209.found ? `✓ ${eo209.pageRange ?? ""}` : "✗ 미발견"}
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => { setResult(null); setError(null); }}
+          className="mt-2 text-[12px] text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
+        >
+          다른 PDF 업로드
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <div
+        role="button"
+        tabIndex={0}
+        aria-label="PDF 업로드 영역"
+        className={cn(
+          "relative flex flex-col items-center justify-center",
+          "rounded-2xl border-2 border-dashed cursor-pointer select-none",
+          "transition-all duration-300 px-4 py-6 text-center min-h-[148px]",
+          "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400",
+          loading && "pointer-events-none opacity-70",
+          dragging
+            ? "border-indigo-400 scale-[1.02] bg-gradient-to-br from-indigo-50/90 to-violet-50/70 dark:from-indigo-950/60 dark:to-violet-950/40"
+            : "border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50/60 to-slate-50/60 dark:from-neutral-800/60 dark:to-neutral-900/60 hover:border-indigo-300 dark:hover:border-indigo-700"
+        )}
+        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragLeave={() => setDragging(false)}
+        onDrop={onDrop}
+        onClick={() => !loading && fileRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && !loading && fileRef.current?.click()}
+      >
+        {loading ? (
+          <>
+            <div className="w-10 h-10 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin mb-3" />
+            <p className="text-[14px] font-semibold text-indigo-600 dark:text-indigo-400">
+              PDF 분석 중...
+            </p>
+            <p className="text-[12px] text-gray-400 mt-1">RAG 청크 생성 · 교과목 추출</p>
+          </>
+        ) : (
+          <>
+            <div className={cn(
+              "w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5 shadow-md transition-all",
+              dragging
+                ? "bg-gradient-to-br from-indigo-400 to-violet-600 scale-110 shadow-[0_8px_28px_rgba(99,102,241,0.5)]"
+                : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-700 dark:to-neutral-600"
+            )}>
+              <svg className={cn("w-6 h-6 transition-colors", dragging ? "text-white" : "text-gray-400")}
+                fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
+                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
+                />
+              </svg>
+            </div>
+            <p className={cn(
+              "text-[15px] font-bold mb-1 transition-all",
+              dragging ? "text-indigo-600 dark:text-indigo-300 scale-105" : "text-gray-700 dark:text-gray-200"
+            )}>
+              {dragging ? "PDF를 여기에 놓으세요!" : "편람 PDF 드래그 또는 클릭"}
+            </p>
+            <p className="text-[12px] text-gray-400 dark:text-gray-500">
+              PDF · 최대 20MB · 텍스트 추출 + RAG 분석
+            </p>
+          </>
+        )}
+        <input
+          ref={fileRef}
+          type="file"
+          accept="application/pdf,.pdf"
+          className="hidden"
+          onChange={onFileChange}
+        />
+      </div>
+
+      {error && (
+        <p className="mt-2 text-[12px] text-red-500 font-medium">{error}</p>
+      )}
+    </div>
+  );
+}
+
 // ─── Main Form ────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -317,9 +506,28 @@ export default function StudyPlanForm({
   const [studentInfo, setStudentInfo] = useState("");
   const [timetableInfo, setTimetableInfo] = useState("");
   const [imageUrl, setImageUrl] = useState("");
+  const [uploadMode, setUploadMode] = useState<"image" | "pdf">("image");
+  const [pdfMode, setPdfMode] = useState(false);
+
+  const universityId =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("smartstudy_university") ?? undefined)
+      : undefined;
+
+  const handlePdfExtracted = useCallback((result: PdfExtractResult) => {
+    setTimetableInfo(result.curriculumText);
+    setPdfMode(true);
+  }, []);
+
+  const handleUploadModeSwitch = (m: "image" | "pdf") => {
+    setUploadMode(m);
+    if (m === "image") {
+      setPdfMode(false);
+    }
+  };
 
   const handleSubmit = () => {
-    onSubmit({ studentInfo, timetableInfo, imageUrl, mode });
+    onSubmit({ studentInfo, timetableInfo, imageUrl, mode, universityId, pdfMode });
   };
 
   const isPlansMode = mode === "plans";
@@ -329,7 +537,7 @@ export default function StudyPlanForm({
     "w-full px-3 py-2.5 text-[15px] rounded-xl resize-vertical",
     "border border-gray-200 dark:border-gray-700",
     "bg-white dark:bg-neutral-800",
-    "text-black",                     // [Typography] forced black
+    "text-black",
     "placeholder:text-gray-400",
     "focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400",
     "transition-colors"
@@ -396,26 +604,66 @@ export default function StudyPlanForm({
         <div className="mt-3">
           <label className="block text-[14px] font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
             시간표/지침서 설명
+            {pdfMode && (
+              <span className="ml-2 text-[11px] font-normal text-indigo-500 dark:text-indigo-400">
+                ✓ PDF에서 자동 입력됨
+              </span>
+            )}
           </label>
           <textarea
-            rows={4}
+            rows={pdfMode ? 3 : 4}
             value={timetableInfo}
             onChange={(e) => setTimetableInfo(e.target.value)}
+            readOnly={pdfMode}
             placeholder={
-              "- 현재(또는 희망) 시간표\n- 꼭 듣고 싶은/피하고 싶은 과목\n- 기타 조건 등을 적어주세요."
+              pdfMode
+                ? "PDF 분석 결과가 자동으로 입력되었습니다."
+                : "- 현재(또는 희망) 시간표\n- 꼭 듣고 싶은/피하고 싶은 과목\n- 기타 조건 등을 적어주세요."
             }
-            className={textareaClass}
+            className={cn(textareaClass, pdfMode && "opacity-60 cursor-default")}
           />
         </div>
 
-        {/* Image upload — required */}
+        {/* Upload section — image or PDF */}
         <div className="mt-4">
-          <label className="block text-[14px] font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            시간표 이미지{" "}
-            <span className="text-red-500 font-bold">*</span>
-            <span className="ml-1.5 text-[11px] font-normal text-red-400">(필수)</span>
-          </label>
-          <ImageDropZone value={imageUrl} onChange={setImageUrl} />
+          {/* Upload mode toggle */}
+          <div className="flex items-center gap-2 mb-2">
+            <label className="text-[14px] font-semibold text-gray-700 dark:text-gray-300">
+              자료 업로드
+            </label>
+            <div className="ml-auto flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-[12px] font-semibold">
+              <button
+                type="button"
+                onClick={() => handleUploadModeSwitch("image")}
+                className={cn(
+                  "px-3 py-1 transition-colors",
+                  uploadMode === "image"
+                    ? "bg-emerald-500 text-white"
+                    : "text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400"
+                )}
+              >
+                이미지
+              </button>
+              <button
+                type="button"
+                onClick={() => handleUploadModeSwitch("pdf")}
+                className={cn(
+                  "px-3 py-1 transition-colors border-l border-gray-200 dark:border-gray-700",
+                  uploadMode === "pdf"
+                    ? "bg-indigo-500 text-white"
+                    : "text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
+                )}
+              >
+                PDF 편람
+              </button>
+            </div>
+          </div>
+
+          {uploadMode === "image" ? (
+            <ImageDropZone value={imageUrl} onChange={setImageUrl} />
+          ) : (
+            <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
+          )}
         </div>
 
         {/* Submit */}

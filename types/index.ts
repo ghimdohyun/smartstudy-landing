@@ -83,4 +83,6 @@ export interface StudyPlanInput {
   mode: 'plans' | 'year';
   /** University preset ID — determines which KB rules to apply */
   universityId?: string;
+  /** True when a PDF was uploaded; skips imageUrl validation and uses text-mode LLM */
+  pdfMode?: boolean;
 }
