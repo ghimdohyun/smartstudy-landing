@@ -65,6 +65,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: `PDF 텍스트 추출 실패: ${msg}` }, { status: 422 });
   }
 
+  // ── 4a. Guard: empty text → scanned / image-only PDF ─────────────────────
+  if (!extracted.fullText || extracted.fullText.trim().length < 50) {
+    return NextResponse.json(
+      {
+        error:
+          "PDF에서 텍스트를 추출할 수 없습니다. " +
+          "스캔된 이미지 PDF이거나 텍스트 레이어가 없는 파일입니다. " +
+          "편람 원본 PDF(텍스트 레이어 포함)를 업로드해주세요.",
+      },
+      { status: 422 }
+    );
+  }
+
   // ── 5. Chunk + Retrieve ───────────────────────────────────────────────────
   const chunks    = chunkPdfByPages(extracted, 10);
   const topChunks = retrieveRelevantChunks(chunks, CURRICULUM_QUERY, 5);
