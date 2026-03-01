@@ -10,7 +10,7 @@ export function useChat() {
   ]);
   const [loading, setLoading] = useState(false);
 
-  const send = useCallback(async (text: string) => {
+  const send = useCallback(async (text: string, universityId?: string) => {
     if (!text.trim()) return;
 
     const userMsg: ChatMessage = {
@@ -22,7 +22,7 @@ export function useChat() {
     setLoading(true);
 
     try {
-      const reply = await fetchChatReply(text);
+      const reply = await fetchChatReply(text, universityId);
       setMessages((prev) => [
         ...prev,
         { id: (Date.now() + 1).toString(), role: 'assistant', content: reply },

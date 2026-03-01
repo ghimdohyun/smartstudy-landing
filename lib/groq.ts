@@ -3,6 +3,7 @@
 // No key -> Replit upstream proxy with DEMO_PLAN fallback.
 
 import Groq from "groq-sdk";
+import { buildPlanPromptRules, getUniversityConfig } from "@/lib/university-kb";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -33,8 +34,15 @@ export class UpstreamError extends Error {
 
 // ─── Enhanced prompt ─────────────────────────────────────────────────────────
 
-export function buildPrompt(studentInfo: string, timetableInfo: string): string {
-  return `[수강 계획표 AI 생성 요청 — 경성대학교 소프트웨어학과 전용]
+export function buildPrompt(studentInfo: string, timetableInfo: string, universityId?: string): string {
+  const config = getUniversityConfig(universityId);
+  const universityRules = buildPlanPromptRules(config);
+  const tc = config.timetable.targetCredits;
+  const dayNote = config.timetable.preferOffDay
+    ? `5. day 필드에 "${config.timetable.preferOffDay}" 포함 불가 (공강 원칙)\n6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`
+    : `5. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`;
+
+  return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
 
 제공된 [시간표 이미지], [학생 정보], [지침서 설명]을 융합 분석하여 아래 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
 
@@ -44,34 +52,27 @@ ${studentInfo}
 ## 시간표 / 지침서
 ${timetableInfo || "없음"}
 
-## 경성대 소프트웨어학과 전용 강제 지침 (최우선 적용)
-1. 총 이수 학점: Plan A~D 각각 정확히 **21학점** (엄격히 준수, 초과/미달 불가)
-2. 금요일 전체 공강: 모든 Plan에서 금요일(fri/Fri/금) 배정 과목 **절대 금지** — 금요일 완전 공강 설계 최우선
-3. 전산수학(EO203): 전공필수 — Plan A~D **모두 반드시 포함** (누락 금지)
-4. 리눅스(EO209): **모든 플랜에서 절대 제외** (수강 금지 과목)
-5. 2학년 1학기 기준: 전공기초 및 전공선택 과목 우선 배정
-6. 창업 관련 교양(창업기초, 스타트업 특강, 사업계획서 작성 등): Plan C/D에 가중치 부여하여 1~2과목 포함 권장
+${universityRules}
 
 ## 4가지 수강 전략
-- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화. 전산수학(EO203) + COR 필수 중심 + 금요일 공강 보장. 21학점.
-- Plan B (도전): 전공심화 + 난이도 높은 과목 포함, 성장 극대화. 전산수학(EO203) 포함 21학점.
-- Plan C (꿀강): 강의평가 우수 + 창업교양 1과목 포함, GPA 극대화. 전산수학(EO203) 포함 21학점.
-- Plan D (전공집중): 전공필수·선택 집중 + 창업교양 1과목 포함, 졸업요건 최적화. 전산수학(EO203) 포함 21학점.
+- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화. ${tc}학점.
+- Plan B (도전): 전공심화 + 난이도 높은 과목 포함, 성장 극대화. ${tc}학점.
+- Plan C (꿀강): 강의평가 우수 과목 중심, GPA 극대화. ${tc}학점.
+- Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최적화. ${tc}학점.
 
 ## 공통 지시 사항
 1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
-2. 실제 교과목 편성표에 존재하는 과목만 추천 (EO/GE 코드 체계 사용)
+2. 실제 교과목 편성표에 존재하는 과목만 추천
 3. yearPlan: 1학기(3-6월), 2학기(9-12월) + 12개월 월별 목표 포함
 4. courses 각 항목: code, name, credits, requirement, target, day, time 필수
-5. day 필드에 "금" 또는 "fri" 포함 불가 (금요일 공강 원칙)
-6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)
+${dayNote}
 
 반환 구조:
 {
-  "planA": { "title": "안정 전략", "strategy": "", "courses": [], "totalCredits": 15 },
-  "planB": { "title": "도전 전략", "strategy": "", "courses": [], "totalCredits": 18 },
-  "planC": { "title": "꿀강 전략", "strategy": "", "courses": [], "totalCredits": 15 },
-  "planD": { "title": "전공집중 전략", "strategy": "", "courses": [], "totalCredits": 18 },
+  "planA": { "title": "안정 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
+  "planB": { "title": "도전 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
+  "planC": { "title": "꿀강 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
+  "planD": { "title": "전공집중 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
   "yearPlan": {
     "semesters": [
       { "semester": "1학기 (3월~6월)", "goal": "", "recommendedCourses": [], "weeklyRoutine": "", "milestones": [],
@@ -211,8 +212,25 @@ function buildMergePrompt(
   studentInfo: string,
   previousJson: string,
   batchIdx: number,
-  totalBatches: number
+  totalBatches: number,
+  universityId?: string
 ): string {
+  const config = getUniversityConfig(universityId);
+  const requires = config.courseRules.filter((r) => r.action === "require");
+  const excludes = config.courseRules.filter((r) => r.action === "exclude");
+  const coreRules = [
+    `- 총학점: 각 Plan 정확히 **${config.timetable.targetCredits}학점** 유지`,
+    ...(config.timetable.preferOffDay
+      ? [`- ${config.timetable.preferOffDay} 공강: day 필드에 해당 요일 절대 불가`]
+      : []),
+    ...requires.map(
+      (r) => `- ${r.name}${r.code ? ` (${r.code})` : ""}: Plan A~D 모두 반드시 포함 (누락 불가)`
+    ),
+    ...excludes.map(
+      (r) => `- ${r.name}${r.code ? ` (${r.code})` : ""}: 절대 제외`
+    ),
+  ].join("\n");
+
   return `[멀티 이미지 분석 — 배치 ${batchIdx + 1}/${totalBatches}: 보조 이미지 통합]
 
 이전 배치 분석 결과 (JSON):
@@ -224,10 +242,7 @@ ${previousJson}
 ${studentInfo}
 
 ## 핵심 강제 원칙 (절대 유지)
-- 전산수학(EO203): Plan A~D 모두 반드시 포함 (누락 불가)
-- 리눅스(EO209): 절대 제외
-- 금요일 공강: day 필드에 "금/fri/Fri" 절대 불가
-- 21학점: 각 Plan 총학점 정확히 21학점 유지
+${coreRules}
 
 추가 이미지 정보를 반영한 개선된 완전한 JSON만 반환하라.
 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음).`;
@@ -242,14 +257,15 @@ ${studentInfo}
 async function callGroqVision(
   studentInfo: string,
   timetableInfo: string,
-  imageUrl: string
+  imageUrl: string,
+  universityId?: string
 ): Promise<unknown> {
   const allUrls = splitImageUrls(imageUrl);
 
   // ── Single-batch path (≤5 images): one API call ──
   if (allUrls.length <= VISION_BATCH_SIZE) {
     const content: Groq.Chat.ChatCompletionContentPart[] = [
-      { type: "text", text: buildPrompt(studentInfo, timetableInfo) },
+      { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId) },
       ...allUrls.map((url): Groq.Chat.ChatCompletionContentPart => ({
         type: "image_url",
         image_url: { url },
@@ -266,7 +282,7 @@ async function callGroqVision(
 
   // Batch 0: Full initial analysis — first 5 images (핵심 전공 편성표 우선)
   const firstContent: Groq.Chat.ChatCompletionContentPart[] = [
-    { type: "text", text: buildPrompt(studentInfo, timetableInfo) },
+    { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId) },
     ...batches[0].map((url): Groq.Chat.ChatCompletionContentPart => ({
       type: "image_url",
       image_url: { url },
@@ -280,7 +296,8 @@ async function callGroqVision(
       studentInfo,
       JSON.stringify(accumulated),
       i,
-      batches.length
+      batches.length,
+      universityId
     );
     const mergeContent: Groq.Chat.ChatCompletionContentPart[] = [
       { type: "text", text: mergeText },
@@ -299,9 +316,10 @@ async function callGroqVision(
 
 async function callGroqText(
   studentInfo: string,
-  timetableInfo: string
+  timetableInfo: string,
+  universityId?: string
 ): Promise<unknown> {
-  const prompt = buildPrompt(studentInfo, timetableInfo);
+  const prompt = buildPrompt(studentInfo, timetableInfo, universityId);
 
   const completion = await groq!.chat.completions.create({
     model: TEXT_MODEL,
@@ -320,10 +338,11 @@ async function callGroqText(
 function buildUpstreamPayload(
   studentInfo: string,
   timetableInfo: string,
-  imageUrl?: string
+  imageUrl?: string,
+  universityId?: string
 ): Record<string, unknown> {
   const isLegacy = REPLIT_PLAN_URL.endsWith("/api/chat");
-  if (isLegacy) return { message: buildPrompt(studentInfo, timetableInfo) };
+  if (isLegacy) return { message: buildPrompt(studentInfo, timetableInfo, universityId) };
   return {
     studentInfo,
     timetableInfo,
@@ -347,9 +366,10 @@ function parseUpstreamText(raw: string): unknown {
 async function callReplitUpstream(
   studentInfo: string,
   timetableInfo: string,
-  imageUrl?: string
+  imageUrl?: string,
+  universityId?: string
 ): Promise<unknown> {
-  const payload = buildUpstreamPayload(studentInfo, timetableInfo, imageUrl);
+  const payload = buildUpstreamPayload(studentInfo, timetableInfo, imageUrl, universityId);
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), UPSTREAM_TIMEOUT_MS);
 
@@ -388,6 +408,7 @@ export interface StudyPlanCallParams {
   studentInfo: string;
   timetableInfo: string;
   imageUrl?: string;
+  universityId?: string;
 }
 
 /**
@@ -397,18 +418,18 @@ export interface StudyPlanCallParams {
  * 3. No key                  -> Replit proxy + DEMO_PLAN fallback
  */
 export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unknown> {
-  const { studentInfo, timetableInfo, imageUrl } = params;
+  const { studentInfo, timetableInfo, imageUrl, universityId } = params;
 
   if (groq) {
     try {
       return imageUrl?.trim()
-        ? await callGroqVision(studentInfo, timetableInfo, imageUrl)
-        : await callGroqText(studentInfo, timetableInfo);
+        ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId)
+        : await callGroqText(studentInfo, timetableInfo, universityId);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new UpstreamError(500, `Groq API 오류: ${msg}`);
     }
   }
 
-  return callReplitUpstream(studentInfo, timetableInfo, imageUrl);
+  return callReplitUpstream(studentInfo, timetableInfo, imageUrl, universityId);
 }

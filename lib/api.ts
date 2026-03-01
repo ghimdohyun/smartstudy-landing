@@ -23,11 +23,11 @@ export class UpgradeRequiredError extends Error {
 
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
-export async function fetchChatReply(message: string): Promise<string> {
+export async function fetchChatReply(message: string, universityId?: string): Promise<string> {
   const res = await fetch('/api/chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, ...(universityId ? { universityId } : {}) }),
   });
   if (!res.ok) {
     const err = await res.json().catch(() => ({})) as { error?: string };
@@ -107,6 +107,7 @@ export async function fetchStudyPlan(input: StudyPlanInput): Promise<StudyPlanRe
       studentInfo: input.studentInfo,
       timetableInfo: input.timetableInfo,
       imageUrl: input.imageUrl,
+      universityId: input.universityId,
     }),
   });
 

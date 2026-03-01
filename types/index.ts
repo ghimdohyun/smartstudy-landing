@@ -81,4 +81,6 @@ export interface StudyPlanInput {
   timetableInfo: string;
   imageUrl?: string;
   mode: 'plans' | 'year';
+  /** University preset ID — determines which KB rules to apply */
+  universityId?: string;
 }

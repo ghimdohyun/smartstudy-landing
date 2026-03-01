@@ -4,11 +4,13 @@
 
 'use client';
 
+import { useState, useEffect } from 'react';
 import StudyPlanForm from '@/components/StudyPlanForm';
 import UpgradeModal from '@/components/UpgradeModal';
 import ApiErrorModal from '@/components/ApiErrorModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStudyPlan } from '@/hooks/useStudyPlan';
+import { UNIVERSITY_PRESETS } from '@/lib/university-kb';
 
 // ─── Skeleton preview shown while AI is running ───────────────────────────────
 
@@ -85,6 +87,51 @@ function AiAnalysisSkeleton({ status }: { status: string }) {
 
 // ─── Main section ─────────────────────────────────────────────────────────────
 
+// ─── University selector pill bar ─────────────────────────────────────────────
+
+function UniversitySelector() {
+  const [selected, setSelected] = useState('kyungsung-sw');
+
+  useEffect(() => {
+    const stored = localStorage.getItem('smartstudy_university');
+    if (stored) setSelected(stored);
+  }, []);
+
+  const handleSelect = (id: string) => {
+    setSelected(id);
+    localStorage.setItem('smartstudy_university', id);
+  };
+
+  return (
+    <div className="flex flex-wrap justify-center gap-2 mb-7">
+      {UNIVERSITY_PRESETS.map((u) => {
+        const active = selected === u.id;
+        return (
+          <button
+            key={u.id}
+            onClick={() => handleSelect(u.id)}
+            className={[
+              'px-4 py-1.5 rounded-full text-sm font-semibold border transition-all',
+              active
+                ? 'bg-indigo-600 text-white border-indigo-600 shadow-md shadow-indigo-200 dark:shadow-indigo-900/40'
+                : 'bg-white dark:bg-neutral-900 text-gray-600 dark:text-gray-400 border-gray-200 dark:border-neutral-700 hover:border-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-400',
+            ].join(' ')}
+          >
+            {u.name}
+            {u.department !== '범용' && (
+              <span className={`ml-1.5 text-[11px] font-normal ${active ? 'opacity-80' : 'opacity-60'}`}>
+                {u.department}
+              </span>
+            )}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Main section ─────────────────────────────────────────────────────────────
+
 export default function ServiceSection() {
   const {
     loading, error, status, generate, retry, clearError,
@@ -135,6 +182,9 @@ export default function ServiceSection() {
         style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
       >
         <div style={{ maxWidth: 960, margin: '0 auto' }}>
+          {/* University selector */}
+          <UniversitySelector />
+
           {/* Section heading */}
           <div className="text-center mb-9">
             <p className="text-[13px] font-bold text-emerald-500 uppercase tracking-[0.1em] m-0 mb-3">

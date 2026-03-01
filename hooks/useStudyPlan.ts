@@ -116,14 +116,20 @@ export function useStudyPlan() {
     stepsRef.current       = buildLoadingSteps(imageCount);
     stepIntervalRef.current = imageCount > VISION_BATCH_SIZE ? MULTI_STEP_MS : SINGLE_STEP_MS;
 
-    lastInputRef.current = input;
+    const universityId =
+      typeof window !== 'undefined'
+        ? localStorage.getItem('smartstudy_university') ?? undefined
+        : undefined;
+    const enrichedInput = { ...input, universityId };
+
+    lastInputRef.current = enrichedInput;
     setError(null);
     setStatus('');
     setUpgradeDetail(null);
     setLoading(true);
 
     try {
-      const data = await fetchStudyPlan(input);
+      const data = await fetchStudyPlan(enrichedInput);
       setResult(data);
       setStatus('생성 완료! 플랜 페이지로 이동합니다...');
       if (typeof window !== 'undefined') {

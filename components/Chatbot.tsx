@@ -3,10 +3,26 @@
 
 import { useState, useRef, useEffect } from 'react';
 import { useChat } from '@/hooks/useChat';
+import { getUniversityConfig } from '@/lib/university-kb';
 
-const FAQ_CHIPS = [
+const FAQ_CHIPS_BY_UNIVERSITY: Record<string, string[]> = {
+  'kyungsung-sw': [
+    '수강신청 기간은 언제인가요?',
+    'EO203 전산수학을 꼭 들어야 하나요?',
+    '재수강 제도를 알려주세요',
+    '평점 계산 방법을 알려주세요',
+  ],
+  'sogang-general': [
+    '수강신청 기간은 언제인가요?',
+    'COR 이수 요건이 무엇인가요?',
+    '재수강 제도를 알려주세요',
+    '평점 계산 방법을 알려주세요',
+  ],
+};
+
+const DEFAULT_FAQ_CHIPS = [
   '수강신청 기간은 언제인가요?',
-  'COR 이수 요건이 무엇인가요?',
+  '필수과목 이수 방법을 알려주세요',
   '재수강 제도를 알려주세요',
   '평점 계산 방법을 알려주세요',
 ];
@@ -14,8 +30,17 @@ const FAQ_CHIPS = [
 export default function Chatbot() {
   const [open, setOpen] = useState(false);
   const [input, setInput] = useState('');
+  const [universityId, setUniversityId] = useState('kyungsung-sw');
   const messagesRef = useRef<HTMLDivElement>(null);
   const { messages, loading, send } = useChat();
+
+  // Re-read university selection whenever the chatbot is opened
+  useEffect(() => {
+    if (open && typeof window !== 'undefined') {
+      const stored = localStorage.getItem('smartstudy_university');
+      if (stored) setUniversityId(stored);
+    }
+  }, [open]);
 
   useEffect(() => {
     if (messagesRef.current) {
@@ -23,10 +48,13 @@ export default function Chatbot() {
     }
   }, [messages, loading]);
 
+  const config = getUniversityConfig(universityId);
+  const faqChips = FAQ_CHIPS_BY_UNIVERSITY[universityId] ?? DEFAULT_FAQ_CHIPS;
+
   const handleSend = (text?: string) => {
     const msg = (text ?? input).trim();
     if (!msg || loading) return;
-    send(msg);
+    send(msg, universityId);
     setInput('');
   };
 
@@ -84,7 +112,7 @@ export default function Chatbot() {
               수강신청 상담 AI
             </p>
             <p style={{ margin: 0, fontSize: 11, opacity: 0.82, lineHeight: 1.2 }}>
-              서강대 수강 전문 어시스턴트
+              {config.name} {config.department} 어시스턴트
             </p>
           </div>
         </div>
@@ -162,7 +190,7 @@ export default function Chatbot() {
             <p style={{ margin: 0, fontSize: 11, color: '#9ca3af', fontWeight: 600, letterSpacing: '0.02em' }}>
               자주 묻는 질문
             </p>
-            {FAQ_CHIPS.map((q) => (
+            {faqChips.map((q) => (
               <button
                 key={q}
                 onClick={() => handleSend(q)}

@@ -11,6 +11,7 @@ export const StudyPlanRequestSchema = z.object({
     .max(10000, "시간표 정보가 너무 깁니다. (최대 10000자)")
     .optional()
     .default(""),
+  universityId: z.string().optional(),
   imageUrl: z
     .string()
     .min(1, "시간표 이미지를 업로드하거나 URL을 입력해주세요.")

@@ -21,8 +21,8 @@ export async function POST(req: NextRequest) {
     }
 
     // 3. Delegate to Groq client (handles timeout, demo fallback, parsing)
-    const { studentInfo, timetableInfo, imageUrl } = parsed.data;
-    const result = await callStudyPlanApi({ studentInfo, timetableInfo, imageUrl });
+    const { studentInfo, timetableInfo, imageUrl, universityId } = parsed.data;
+    const result = await callStudyPlanApi({ studentInfo, timetableInfo, imageUrl, universityId });
 
     // 4. Record usage for authenticated users
     if (usage.userId) {
