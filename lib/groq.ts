@@ -13,7 +13,7 @@ const REPLIT_PLAN_URL =
   "https://groq-chatbot-backend--ghimdohyun.replit.app/api/generate-plan";
 
 const UPSTREAM_TIMEOUT_MS = 45_000;
-const VISION_MODEL = "llama-3.2-11b-vision-preview";
+const VISION_MODEL = "meta-llama/llama-4-scout-17b-16e-instruct";  // Llama 4 Scout (multimodal)
 const TEXT_MODEL   = "llama-3.3-70b-versatile";
 
 // Build-safe: only instantiated when key is present
@@ -33,9 +33,9 @@ export class UpstreamError extends Error {
 // ─── Enhanced prompt ─────────────────────────────────────────────────────────
 
 export function buildPrompt(studentInfo: string, timetableInfo: string): string {
-  return `[수강 계획표 AI 생성 요청]
+  return `[수강 계획표 AI 생성 요청 — 경성대학교 소프트웨어학과 전용]
 
-제공된 [시간표 이미지], [학생 정보], [지침서 설명]을 융합 분석하여 아래 4가지 전략의 수강 계획과 1년 로드맵을 JSON 형태로 반환하라.
+제공된 [시간표 이미지], [학생 정보], [지침서 설명]을 융합 분석하여 아래 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
 
 ## 학생 정보
 ${studentInfo}
@@ -43,19 +43,27 @@ ${studentInfo}
 ## 시간표 / 지침서
 ${timetableInfo || "없음"}
 
-## 4가지 수강 전략
-- Plan A (안정): 이수 부담이 낮고 학점 관리가 쉬운 안정적 시간표. COR 필수과목 중심, 12-15학점.
-- Plan B (도전): 어렵지만 성장 가능성이 높은 도전적 시간표. 전공심화 + 고학점 과목 포함, 18학점 이상.
-- Plan C (꿀강): 강의 평가가 좋고 학습 부담이 낮은 꿀강 중심 시간표. 강의력 우수 교수 과목 우선.
-- Plan D (전공집중): 전공 필수·선택 과목 중심의 심화 시간표. 졸업 요건 충족 최적화.
+## 경성대 소프트웨어학과 전용 강제 지침 (최우선 적용)
+1. 총 이수 학점: Plan A~D 각각 정확히 **21학점** (엄격히 준수, 초과/미달 불가)
+2. 금요일 전체 공강: 모든 Plan에서 금요일(fri/Fri/금) 배정 과목 **절대 금지** — 금요일 완전 공강 설계 최우선
+3. 전산수학(EO203): 전공필수 — Plan A~D **모두 반드시 포함** (누락 금지)
+4. 리눅스(EO209): **모든 플랜에서 절대 제외** (수강 금지 과목)
+5. 2학년 1학기 기준: 전공기초 및 전공선택 과목 우선 배정
+6. 창업 관련 교양(창업기초, 스타트업 특강, 사업계획서 작성 등): Plan C/D에 가중치 부여하여 1~2과목 포함 권장
 
-## 지시 사항
-1. 이미지가 제공된 경우 시간표에서 현재 수강 과목, 공강 시간, 선호 시간대를 파악하라.
-2. 반드시 실제 교과목 편성표에 존재하는 과목만 추천하라.
-   COR(공통필수) LCS(공통선택) HFS(인문사회) + 전공 코드 엄수.
-3. yearPlan: 1학기(3-6월), 2학기(9-12월) 및 12개월 월별 목표 포함.
-4. courses 각 항목: code, name, credits, requirement, target, day, time 필수.
-5. 응답은 순수 JSON만 반환 (코드블록, 설명 텍스트 없음).
+## 4가지 수강 전략
+- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화. 전산수학(EO203) + COR 필수 중심 + 금요일 공강 보장. 21학점.
+- Plan B (도전): 전공심화 + 난이도 높은 과목 포함, 성장 극대화. 전산수학(EO203) 포함 21학점.
+- Plan C (꿀강): 강의평가 우수 + 창업교양 1과목 포함, GPA 극대화. 전산수학(EO203) 포함 21학점.
+- Plan D (전공집중): 전공필수·선택 집중 + 창업교양 1과목 포함, 졸업요건 최적화. 전산수학(EO203) 포함 21학점.
+
+## 공통 지시 사항
+1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
+2. 실제 교과목 편성표에 존재하는 과목만 추천 (EO/GE 코드 체계 사용)
+3. yearPlan: 1학기(3-6월), 2학기(9-12월) + 12개월 월별 목표 포함
+4. courses 각 항목: code, name, credits, requirement, target, day, time 필수
+5. day 필드에 "금" 또는 "fri" 포함 불가 (금요일 공강 원칙)
+6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)
 
 반환 구조:
 {
@@ -82,53 +90,59 @@ export const DEMO_PLAN = {
   _isDemo: true,
   planA: {
     title: "안정 전략",
-    strategy: "COR 공통필수를 중심으로 학점 부담을 낮추고 적응력을 키웁니다.",
+    strategy: "전산수학(EO203) 포함, COR 공통필수 중심으로 학점 부담을 낮추고 금요일 공강을 확보합니다. 21학점.",
     courses: [
-      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "월수", time: "09:00" },
-      { code: "COR-102", name: "자연의 이해", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "10:30" },
+      { code: "EO203", name: "전산수학", credits: 3, requirement: "전공필수", target: "2학년", day: "월수", time: "09:00" },
+      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "10:30" },
+      { code: "COR-102", name: "자연의 이해", credits: 3, requirement: "공통필수", target: "전체", day: "월수", time: "11:00" },
       { code: "LCS-201", name: "비판적 사고와 글쓰기", credits: 3, requirement: "공통선택", target: "전체", day: "화", time: "13:00" },
       { code: "HFS-101", name: "철학의 이해", credits: 3, requirement: "인문사회", target: "전체", day: "목", time: "15:00" },
-      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "1학년", day: "금", time: "10:00" },
+      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "2학년", day: "화목", time: "09:00" },
+      { code: "GE-201", name: "의사소통과 리더십", credits: 3, requirement: "교양선택", target: "전체", day: "수", time: "14:00" },
     ],
-    totalCredits: 15,
+    totalCredits: 21,
   },
   planB: {
     title: "도전 전략",
-    strategy: "전공심화 및 고학점 요구 과목을 적극 편입하여 역량을 극대화합니다.",
+    strategy: "전산수학(EO203) + 전공심화 과목으로 역량을 극대화합니다. 금요일 전체 공강. 21학점.",
     courses: [
-      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "09:00" },
-      { code: "LCS-202", name: "데이터와 사회", credits: 3, requirement: "공통선택", target: "전체", day: "월수", time: "11:00" },
-      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "1학년", day: "월수", time: "09:00" },
-      { code: "전공선택-101", name: "전공심화 I", credits: 3, requirement: "전공선택", target: "1학년", day: "목", time: "13:00" },
-      { code: "HFS-101", name: "철학의 이해", credits: 3, requirement: "인문사회", target: "전체", day: "금", time: "11:00" },
-      { code: "LCS-203", name: "창의적 문제해결", credits: 3, requirement: "공통선택", target: "전체", day: "화", time: "14:00" },
+      { code: "EO203", name: "전산수학", credits: 3, requirement: "전공필수", target: "2학년", day: "화목", time: "09:00" },
+      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "월수", time: "11:00" },
+      { code: "LCS-202", name: "데이터와 사회", credits: 3, requirement: "공통선택", target: "전체", day: "월수", time: "09:00" },
+      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "2학년", day: "화목", time: "13:00" },
+      { code: "전공선택-101", name: "전공심화 I", credits: 3, requirement: "전공선택", target: "2학년", day: "목", time: "15:00" },
+      { code: "HFS-101", name: "철학의 이해", credits: 3, requirement: "인문사회", target: "전체", day: "화", time: "14:00" },
+      { code: "LCS-203", name: "창의적 문제해결", credits: 3, requirement: "공통선택", target: "전체", day: "수", time: "13:00" },
     ],
-    totalCredits: 18,
+    totalCredits: 21,
   },
   planC: {
     title: "꿀강 전략",
-    strategy: "강의 평가가 우수하고 학습 부담이 낮은 과목으로 GPA를 극대화합니다.",
+    strategy: "전산수학(EO203) + 강의평가 우수 과목 + 창업 교양으로 GPA 극대화. 금요일 공강. 21학점.",
     courses: [
-      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "월수", time: "10:30" },
-      { code: "COR-104", name: "예술과 문화", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "13:00" },
+      { code: "EO203", name: "전산수학", credits: 3, requirement: "전공필수", target: "2학년", day: "월수", time: "09:00" },
+      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "10:30" },
+      { code: "COR-104", name: "예술과 문화", credits: 3, requirement: "공통필수", target: "전체", day: "월수", time: "13:00" },
       { code: "LCS-201", name: "비판적 사고와 글쓰기", credits: 3, requirement: "공통선택", target: "전체", day: "수", time: "14:00" },
       { code: "HFS-102", name: "사회학 입문", credits: 3, requirement: "인문사회", target: "전체", day: "화", time: "10:30" },
-      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "1학년", day: "금", time: "09:00" },
+      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "2학년", day: "화목", time: "09:00" },
+      { code: "GE-창업", name: "창업기초", credits: 3, requirement: "교양선택", target: "전체", day: "목", time: "16:00" },
     ],
-    totalCredits: 15,
+    totalCredits: 21,
   },
   planD: {
     title: "전공집중 전략",
-    strategy: "전공 필수·선택 과목을 집중 이수하여 졸업 요건을 최적 경로로 충족합니다.",
+    strategy: "전산수학(EO203) + 전공 필수·선택 집중 + 창업 교양으로 졸업요건을 최적화합니다. 금요일 공강. 21학점.",
     courses: [
-      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "10:30" },
-      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "1학년", day: "월수", time: "09:00" },
-      { code: "전공선택-101", name: "전공심화 I", credits: 3, requirement: "전공선택", target: "1학년", day: "목", time: "13:00" },
-      { code: "전공선택-102", name: "전공심화 II", credits: 3, requirement: "전공선택", target: "1학년", day: "화", time: "15:00" },
-      { code: "전공필수-201", name: "핵심전공 세미나", credits: 3, requirement: "전공필수", target: "1학년", day: "금", time: "10:00" },
+      { code: "EO203", name: "전산수학", credits: 3, requirement: "전공필수", target: "2학년", day: "화목", time: "10:30" },
+      { code: "COR-101", name: "인간의 탐구", credits: 3, requirement: "공통필수", target: "전체", day: "화목", time: "09:00" },
+      { code: "전공기초-001", name: "전공입문 세미나", credits: 3, requirement: "전공필수", target: "2학년", day: "월수", time: "09:00" },
+      { code: "전공선택-101", name: "전공심화 I", credits: 3, requirement: "전공선택", target: "2학년", day: "목", time: "13:00" },
+      { code: "전공선택-102", name: "전공심화 II", credits: 3, requirement: "전공선택", target: "2학년", day: "화", time: "15:00" },
       { code: "LCS-201", name: "비판적 사고와 글쓰기", credits: 3, requirement: "공통선택", target: "전체", day: "수", time: "14:00" },
+      { code: "GE-창업", name: "창업기초", credits: 3, requirement: "교양선택", target: "전체", day: "월", time: "16:00" },
     ],
-    totalCredits: 18,
+    totalCredits: 21,
   },
   yearPlan: {
     semesters: [

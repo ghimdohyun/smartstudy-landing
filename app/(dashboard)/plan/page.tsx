@@ -126,6 +126,17 @@ export default function PlanPage() {
         {/* Stripe upgrade success */}
         {showUpgraded && <UpgradedBanner onClose={() => setShowUpgraded(false)} />}
 
+        {/* Real AI result indicator — shown when NOT demo */}
+        {!result.isDemo && (
+          <div className="flex items-center gap-3 px-4 py-3 mb-5 rounded-2xl bg-white/96 dark:bg-slate-900/96 backdrop-blur-[20px] border border-emerald-200/60 dark:border-emerald-800/60 shadow-[0_4px_24px_rgba(16,185,129,0.08)]">
+            <span className="w-2 h-2 rounded-full bg-emerald-400 shrink-0 shadow-[0_0_0_3px_rgba(16,185,129,0.2)] animate-pulse" />
+            <p className="m-0 text-[13px] text-gray-600 dark:text-gray-300">
+              <strong className="text-emerald-700 dark:text-emerald-400">실시간 AI 분석 완료</strong>{" "}
+              — Llama 4 Scout 비전 모델이 업로드된 이미지를 직접 분석하여 생성한 맞춤 계획입니다.
+            </p>
+          </div>
+        )}
+
         {/* Demo mode — glassmorphism bar (blur 20px, bg-96%) */}
         {result.isDemo && (
           <div className="flex items-center gap-3 px-4 py-3 mb-5 rounded-2xl bg-white/96 dark:bg-slate-900/96 backdrop-blur-[20px] border border-white/60 dark:border-slate-700/60 shadow-[0_4px_24px_rgba(15,23,42,0.07)]">

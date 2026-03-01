@@ -12,7 +12,7 @@ import { cn } from "@/lib/utils";
 // Internally manages string[] of base64/URL sources.
 // Joins with "|||" → parent receives single imageUrl string for API compat.
 
-const MAX_IMAGES = 4;
+const MAX_IMAGES = 20;
 
 interface DropZoneProps {
   value: string;            // "|||"-joined composite string
