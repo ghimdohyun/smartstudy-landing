@@ -1,4 +1,4 @@
-// PlanCard — Manus-style dark card + instant download per plan
+// PlanCard — white-theme card + instant CSV download per plan
 "use client";
 
 import type { StudyPlan } from "@/types";
@@ -10,16 +10,16 @@ interface Props {
 }
 
 const PLAN_META = [
-  { label: "Plan A", accent: "#3b82f6", glow: "rgba(59,130,246,0.3)"  },
-  { label: "Plan B", accent: "#10b981", glow: "rgba(16,185,129,0.3)"  },
-  { label: "Plan C", accent: "#a855f7", glow: "rgba(168,85,247,0.3)"  },
-  { label: "Plan D", accent: "#f97316", glow: "rgba(249,115,22,0.3)"  },
+  { label: "Plan A", accent: "#3b82f6", glow: "rgba(59,130,246,0.15)"  },
+  { label: "Plan B", accent: "#10b981", glow: "rgba(16,185,129,0.15)"  },
+  { label: "Plan C", accent: "#a855f7", glow: "rgba(168,85,247,0.15)"  },
+  { label: "Plan D", accent: "#f97316", glow: "rgba(249,115,22,0.15)"  },
 ];
 
 function reqBadge(req: string): string {
-  if (req.includes("공통필수")) return "bg-rose-900/50 text-rose-300";
-  if (req.includes("필수"))     return "bg-indigo-900/50 text-indigo-300";
-  return "bg-emerald-900/50 text-emerald-300";
+  if (req.includes("공통필수")) return "bg-rose-50 text-rose-700 border border-rose-200";
+  if (req.includes("필수"))     return "bg-indigo-50 text-indigo-700 border border-indigo-200";
+  return "bg-emerald-50 text-emerald-700 border border-emerald-200";
 }
 
 function downloadPlan(plan: StudyPlan, label: string) {
@@ -48,9 +48,8 @@ export default function PlanCard({ plan, index }: Props) {
   return (
     <div className={cn(
       "flex-1 min-w-[272px] rounded-2xl overflow-hidden",
-      "bg-gradient-to-b from-slate-900 to-slate-950",
-      "border border-slate-800",
-      "shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+      "bg-white border border-slate-200",
+      "shadow-[0_2px_12px_rgba(15,23,42,0.06)]",
       "flex flex-col"
     )}
     style={{ borderTop: `3px solid ${meta.accent}` }}
@@ -61,19 +60,19 @@ export default function PlanCard({ plan, index }: Props) {
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full"
-              style={{ background: `${meta.accent}20`, color: meta.accent, border: `1px solid ${meta.accent}40` }}>
+              style={{ background: `${meta.accent}12`, color: meta.accent, border: `1px solid ${meta.accent}30` }}>
               {label}
             </span>
             {plan.totalCredits !== undefined && (
-              <span className="text-[11px] text-slate-500 font-mono">{plan.totalCredits}학점</span>
+              <span className="text-[11px] text-slate-400 font-mono">{plan.totalCredits}학점</span>
             )}
           </div>
         </div>
 
         {/* Strategy */}
         {plan.strategy && (
-          <p className="text-[12px] text-slate-400 leading-relaxed mb-3 pl-3"
-            style={{ borderLeft: `2px solid ${meta.accent}60` }}>
+          <p className="text-[12px] text-slate-600 leading-relaxed mb-3 pl-3"
+            style={{ borderLeft: `2px solid ${meta.accent}50` }}>
             {plan.strategy}
           </p>
         )}
@@ -82,12 +81,12 @@ export default function PlanCard({ plan, index }: Props) {
         {(plan.courses ?? []).length > 0 && (
           <ul className="space-y-1.5 flex-1">
             {(plan.courses ?? []).map((c, i) => (
-              <li key={i} className="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800/80 transition-colors">
+              <li key={i} className="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
                 <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-slate-100 truncate">{c.name}</p>
+                  <p className="text-[13px] font-semibold text-slate-800 truncate">{c.name}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {c.code && (
-                      <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-700/80 text-slate-400 tracking-wide">
+                      <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-100 text-slate-500 tracking-wide border border-slate-200">
                         {c.code}
                       </span>
                     )}
@@ -105,7 +104,7 @@ export default function PlanCard({ plan, index }: Props) {
                     </span>
                   )}
                   {c.day && (
-                    <span className="text-[10px] text-slate-600 font-mono">{c.day}</span>
+                    <span className="text-[10px] text-slate-400 font-mono">{c.day}</span>
                   )}
                 </div>
               </li>
@@ -114,7 +113,7 @@ export default function PlanCard({ plan, index }: Props) {
         )}
 
         {plan.note && (
-          <p className="mt-3 text-[11px] text-slate-600 font-mono">{plan.note}</p>
+          <p className="mt-3 text-[11px] text-slate-400 font-mono">{plan.note}</p>
         )}
       </div>
 
@@ -126,16 +125,16 @@ export default function PlanCard({ plan, index }: Props) {
             "border text-center font-mono tracking-wide"
           )}
           style={{
-            borderColor: `${meta.accent}40`,
+            borderColor: `${meta.accent}30`,
             color: meta.accent,
-            background: `${meta.accent}0d`,
+            background: `${meta.accent}08`,
           }}
           onMouseEnter={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}20`;
-            (e.currentTarget as HTMLButtonElement).style.boxShadow  = `0 0 12px ${meta.glow}`;
+            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}15`;
+            (e.currentTarget as HTMLButtonElement).style.boxShadow  = `0 0 10px ${meta.glow}`;
           }}
           onMouseLeave={(e) => {
-            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}0d`;
+            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}08`;
             (e.currentTarget as HTMLButtonElement).style.boxShadow  = "none";
           }}>
           ↓ CSV 다운로드
