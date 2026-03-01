@@ -215,18 +215,26 @@ function Disclaimer() {
 // ─── Main section ─────────────────────────────────────────────────────────────
 
 export default function ServiceSection() {
+  // Client-only mount: prevents ALL SSR rendering of this subtree.
+  // Hydration接点 = 0 → eliminates any possible hydration mismatch.
+  const [mounted, setMounted] = useState(false);
+
   const {
     loading, error, status, generate, retry, clearError,
     upgradeDetail, closeUpgradeModal,
   } = useStudyPlan();
 
-  // Default to generic config (remove university-specific localStorage value if it was set)
   useEffect(() => {
+    setMounted(true);
+    // Default to generic config (remove any stale university-specific value)
     const stored = localStorage.getItem('smartstudy_university');
     if (!stored || stored === 'kyungsung-sw' || stored === 'sogang-general') {
       localStorage.setItem('smartstudy_university', 'generic');
     }
   }, []);
+
+  // Return null until client hydration is complete — zero SSR footprint
+  if (!mounted) return null;
 
   const isValidationError =
     error === '학생 정보를 입력해주세요.' ||

@@ -17,6 +17,32 @@ const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
   loading: () => <div className="h-40 flex items-center justify-center text-slate-400 dark:text-slate-500 text-[13px]">시간표 로딩 중...</div>,
 });
 
+// ─── Data sanitization (preFormat) ───────────────────────────────────────────
+// Replaces null/undefined in AI-returned JSON with type-safe defaults so that
+// downstream component accesses never throw on missing fields.
+
+function preFormat(raw: unknown): StudyPlanResult {
+  const data = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+
+  const plans = (Array.isArray(data.plans) ? data.plans : []).map((plan: unknown) => {
+    const p = (plan && typeof plan === "object" ? plan : {}) as Record<string, unknown>;
+    const courses = (Array.isArray(p.courses) ? p.courses : []).map((c: unknown) => {
+      const course = (c && typeof c === "object" ? c : {}) as Record<string, unknown>;
+      return {
+        ...course,
+        name:        course.name != null ? String(course.name) : "",
+        credits:     typeof course.credits === "number" ? course.credits : undefined,
+        requirement: course.requirement != null ? String(course.requirement) : undefined,
+        day:         course.day  != null ? String(course.day)  : undefined,
+        time:        course.time != null ? String(course.time) : undefined,
+      };
+    });
+    return { ...p, label: p.label != null ? String(p.label) : "", courses };
+  });
+
+  return { ...data, plans } as StudyPlanResult;
+}
+
 // ─── 편람 근거 데이터 footer ───────────────────────────────────────────────────
 
 function CurriculumSourceFooter() {
@@ -130,7 +156,8 @@ export default function PlanPage() {
     const stored = localStorage.getItem("smartstudy_result");
     if (stored) {
       try {
-        setResult(JSON.parse(stored) as StudyPlanResult);
+        // preFormat sanitizes null/undefined fields before they reach renderers
+        setResult(preFormat(JSON.parse(stored)));
       } catch {
         setResult(null);
       }
