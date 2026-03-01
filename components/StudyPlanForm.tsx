@@ -157,7 +157,21 @@ function ImageDropZone({ value, onChange }: ImageDropZoneProps) {
   );
 }
 
-// ─── PDF Drop Zone (white theme, pdf2json engine, base64 JSON) ─────────────────
+// ─── PDF Drop Zone (client-side pdfjs extraction — no binary upload, no 413) ───
+//
+// Architecture: pdfjs-dist runs IN THE BROWSER.
+//   1. Extract text page-by-page (shows progress)
+//   2. Filter only curriculum-relevant pages (keyword match)
+//   3. POST only the tiny filtered text to /api/pdf-extract
+//   → Server receives ~KB of text instead of MB of binary → 413 impossible
+
+const CURRICULUM_KEYWORDS = [
+  "소프트웨어학과", "교육과정", "전공필수", "전공선택", "전공기초",
+  "교양필수", "교양선택", "학점이수", "졸업학점", "이수구분",
+  "공통필수", " EO2", "학수번호", "이수학점", "소프트웨어",
+];
+
+interface PageEntry { pageNum: number; text: string }
 
 interface PdfExtractResult {
   totalPages: number;
@@ -169,60 +183,90 @@ interface PdfExtractResult {
 
 interface PdfDropZoneProps { universityId?: string; onExtracted: (r: PdfExtractResult) => void }
 
+type Phase = "idle" | "extracting" | "sending" | "done" | "error";
+
 function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
-  const [dragging, setDragging] = useState(false);
-  const [fetching, setFetching] = useState(false);
-  const [done,     setDone]     = useState(false);
-  const [result,   setResult]   = useState<PdfExtractResult | null>(null);
-  const [error,    setError]    = useState<string | null>(null);
+  const [dragging,  setDragging]  = useState(false);
+  const [phase,     setPhase]     = useState<Phase>("idle");
+  const [progress,  setProgress]  = useState<{ cur: number; total: number } | null>(null);
+  const [result,    setResult]    = useState<PdfExtractResult | null>(null);
+  const [error,     setError]     = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  // 75 MB client-side cap: base64 overhead is ~33%, so 75 MB PDF → ~100 MB JSON body
-  const MAX_PDF_BYTES = 75 * 1024 * 1024;
 
-  // FileReader → base64 (browser-safe, no Node.js Buffer)
-  const readAsBase64 = (file: File): Promise<string> =>
-    new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload  = () => resolve((reader.result as string).split(",")[1]);
-      reader.onerror = () => reject(new Error("파일 읽기 실패"));
-      reader.readAsDataURL(file);
-    });
+  /** Extract text client-side with pdfjs-dist, filter to curriculum pages only */
+  const extractClientSide = async (
+    file: File,
+    onProgress: (cur: number, total: number) => void,
+  ): Promise<{ pageTexts: PageEntry[]; totalPages: number }> => {
+    // Dynamic import: keeps pdfjs out of SSR bundle
+    const pdfjs = await import("pdfjs-dist");
+    // Worker served from unpkg CDN — no webpack config needed, always version-matched
+    pdfjs.GlobalWorkerOptions.workerSrc =
+      `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
 
-  const uploadPdf = useCallback(async (file: File) => {
+    const arrayBuffer = await file.arrayBuffer();
+    const pdf = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
+    const totalPages = pdf.numPages;
+    const pageTexts: PageEntry[] = [];
+
+    for (let p = 1; p <= totalPages; p++) {
+      onProgress(p, totalPages);
+      const page    = await pdf.getPage(p);
+      const content = await page.getTextContent();
+      const text    = (content.items as Array<{ str?: string }>)
+        .map((it) => it.str ?? "")
+        .join(" ")
+        .replace(/\s{2,}/g, " ")
+        .trim();
+      // Keep only pages containing curriculum keywords — drops table-of-contents, photos, etc.
+      if (text.length > 30 && CURRICULUM_KEYWORDS.some((kw) => text.includes(kw))) {
+        pageTexts.push({ pageNum: p, text });
+      }
+    }
+    return { pageTexts, totalPages };
+  };
+
+  const handleFile = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
       setError("PDF 파일만 업로드할 수 있습니다."); return;
     }
-    if (file.size > MAX_PDF_BYTES) {
-      setError(
-        "파일이 너무 큽니다. " +
-        "소프트웨어학과 교육과정 페이지만 별도로 추출하여 올려주세요. (최대 75MB)"
-      );
-      return;
-    }
-    setFetching(true); setDone(false); setError(null); setResult(null);
+    setPhase("extracting"); setProgress(null); setError(null); setResult(null);
     try {
-      // base64 JSON — bypasses multipart parser limits (413 원천 차단)
-      const fileBase64 = await readAsBase64(file);
+      // ── Phase 1: browser extracts text (no upload, no 413) ───────────────
+      const { pageTexts, totalPages } = await extractClientSide(
+        file,
+        (cur, total) => setProgress({ cur, total }),
+      );
+
+      if (pageTexts.length === 0) {
+        throw new Error(
+          "커리큘럼 관련 페이지를 찾을 수 없습니다. " +
+          "스캔 이미지 PDF이거나 소프트웨어학과 편람이 아닐 수 있습니다.",
+        );
+      }
+
+      // ── Phase 2: send only the filtered text (KB-sized) to server ────────
+      setPhase("sending");
       const res = await fetch("/api/pdf-extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fileBase64, universityId }),
+        body: JSON.stringify({ pageTexts, totalPages, universityId }),
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(e.error ?? `오류 ${res.status}`);
+        throw new Error(e.error ?? `서버 오류 ${res.status}`);
       }
       const data = await res.json() as PdfExtractResult;
       setResult(data); onExtracted(data);
+      setPhase("done");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "PDF 분석 실패");
-    } finally {
-      setFetching(false); setDone(true);
+      setPhase("error");
     }
   }, [universityId, onExtracted]);
 
-  // Success result card
-  if (result && done) {
+  // ── Success card ──────────────────────────────────────────────────────────
+  if (phase === "done" && result) {
     const eo203 = result.validation?.["EO203"];
     const eo209 = result.validation?.["EO209"];
     return (
@@ -230,7 +274,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
         <div className="flex items-center gap-2 mb-2">
           <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
           <p className="text-[13px] font-semibold text-emerald-800">
-            {result.totalPages}페이지 분석 완료 · 과목 {result.courseCount}개 · {result.chunkCount}청크
+            분석 완료 · 전체 {result.totalPages}페이지 중 커리큘럼 {result.chunkCount}청크 · 과목 {result.courseCount}개
           </p>
         </div>
         <div className="flex flex-wrap gap-1.5 mb-2">
@@ -241,55 +285,78 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
                 "text-[11px] font-semibold px-2.5 py-0.5 rounded-full border font-mono",
                 val.found
                   ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                  : "bg-red-50 text-red-600 border-red-200"
+                  : "bg-red-50 text-red-600 border-red-200",
               )}>
                 {code as string} {val.found ? `✓ ${val.pageRange ?? ""}` : "✗ 미발견"}
               </span>
             ) : null;
           })}
         </div>
-        <button type="button" onClick={() => { setResult(null); setDone(false); setError(null); }}
-          className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">다른 PDF 업로드</button>
-        <AgentProgressLog active={false} done={true} />
+        <button type="button"
+          onClick={() => { setResult(null); setPhase("idle"); setError(null); setProgress(null); }}
+          className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
+          다른 PDF 업로드
+        </button>
       </div>
     );
   }
 
+  // ── Extraction / sending progress ─────────────────────────────────────────
+  if (phase === "extracting" || phase === "sending") {
+    const pct = progress ? Math.round((progress.cur / progress.total) * 100) : 0;
+    return (
+      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 space-y-2.5">
+        <div className="flex items-center gap-2">
+          <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin shrink-0" />
+          <p className="text-[13px] font-semibold text-indigo-800">
+            {phase === "extracting"
+              ? progress
+                ? `브라우저에서 직접 텍스트를 추출 중입니다... (${progress.cur} / ${progress.total}페이지)`
+                : "PDF를 여는 중..."
+              : "핵심 커리큘럼 페이지를 서버로 전송 중..."}
+          </p>
+        </div>
+        {phase === "extracting" && progress && (
+          <>
+            <div className="w-full h-1.5 rounded-full bg-indigo-100 overflow-hidden">
+              <div
+                className="h-full rounded-full bg-indigo-500 transition-all duration-300"
+                style={{ width: `${pct}%` }}
+              />
+            </div>
+            <p className="text-[11px] text-indigo-500">
+              파일이 서버로 업로드되지 않습니다 — 브라우저에서 직접 처리 중
+            </p>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ── Drop zone (idle / error) ──────────────────────────────────────────────
   return (
     <div>
       <div role="button" tabIndex={0}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) uploadPdf(f); }}
-        onClick={() => !fetching && fileRef.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && !fetching && fileRef.current?.click()}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
+        onClick={() => fileRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
         className={cn(
           "flex flex-col items-center justify-center min-h-[100px] rounded-xl border-2 border-dashed",
           "cursor-pointer transition-all duration-200 select-none text-center px-3 py-4",
-          fetching && "pointer-events-none",
           dragging
             ? "border-indigo-400 bg-indigo-50"
-            : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 bg-gray-50/60"
+            : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 bg-gray-50/60",
         )}>
-        {fetching ? (
-          <div className="flex items-center gap-2">
-            <div className="w-4 h-4 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-            <span className="text-[13px] text-indigo-600 font-medium">PDF 분석 중...</span>
-          </div>
-        ) : (
-          <>
-            <span className="text-2xl mb-1">📄</span>
-            <p className="text-[13px] text-gray-600 font-medium">
-              {dragging ? "PDF를 여기에 놓으세요" : "경성대 편람 PDF 드래그 또는 클릭"}
-            </p>
-            <p className="text-[11px] text-gray-400 mt-0.5">PDF · 최대 75MB · 텍스트 추출 + RAG 분석</p>
-          </>
-        )}
+        <span className="text-2xl mb-1">📄</span>
+        <p className="text-[13px] text-gray-600 font-medium">
+          {dragging ? "PDF를 여기에 놓으세요" : "경성대 편람 PDF 드래그 또는 클릭"}
+        </p>
+        <p className="text-[11px] text-gray-400 mt-0.5">PDF · 용량 무제한 · 브라우저 직접 추출 (서버 전송 없음)</p>
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPdf(f); e.target.value = ""; }} />
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
       </div>
-
-      <AgentProgressLog active={fetching} done={done} />
 
       {error && (
         <p className="mt-2 text-[12px] text-red-500 font-medium">{error}</p>

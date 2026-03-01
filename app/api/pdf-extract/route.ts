@@ -1,85 +1,78 @@
-// PDF extraction endpoint — JSON POST (base64), returns structured curriculum data
-// Switched from multipart FormData to JSON+base64 to bypass Next.js multipart body parser limits.
-// req.json() respects experimental.serverActions.bodySizeLimit (20mb in next.config.ts).
+// PDF extract endpoint — receives PRE-EXTRACTED page texts from the browser (pdfjs-dist client-side).
+// The client runs pdfjs in the browser, filters curriculum pages, and sends only the text.
+// This eliminates the 413 problem entirely: no binary PDF upload, just small JSON text payload.
 
-export const maxDuration = 60; // allow up to 60s for large PDF parsing
-export const runtime = "nodejs"; // explicit Node.js runtime (no Edge body size limits)
+export const maxDuration = 60;
+export const runtime    = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import {
-  extractPdfText,
   chunkPdfByPages,
   retrieveRelevantChunks,
   parseCurriculumTable,
   findCourseInChunks,
   buildCurriculumContext,
 } from "@/lib/pdf-engine";
+import type { ExtractedPdf } from "@/lib/pdf-engine";
 
-const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
+// Max size of incoming JSON text payload (the text is already tiny compared to the PDF)
+const MAX_TEXT_BYTES = 2 * 1024 * 1024; // 2 MB text max (a 200-page handbook = ~500 KB text)
 
 const CURRICULUM_QUERY =
   "소프트웨어학과 교육과정 전공필수 전공기초 전공선택 EO203 EO209 졸업학점";
 
 const VALIDATE_CODES = ["EO203", "EO209"];
 
+interface PageEntry { pageNum: number; text: string }
+
 export async function POST(req: NextRequest) {
-  // ── 1. Parse JSON body (base64 file) ──────────────────────────────────────
-  // FormData multipart is NOT used — Next.js internal multipart parser ignores
-  // experimental.serverActions.bodySizeLimit and uses a lower internal limit,
-  // causing 413 even for small files. JSON bodies respect bodySizeLimit correctly.
-  let body: { fileBase64?: string; universityId?: string };
+  // ── 1. Parse JSON body (pre-extracted text from browser pdfjs) ─────────────
+  let body: { pageTexts?: PageEntry[]; totalPages?: number; universityId?: string };
   try {
-    body = await req.json() as { fileBase64?: string; universityId?: string };
+    body = await req.json() as typeof body;
   } catch {
-    return NextResponse.json({ error: "JSON 형식이 필요합니다. (fileBase64 필드)" }, { status: 400 });
+    return NextResponse.json({ error: "JSON 형식이 필요합니다." }, { status: 400 });
   }
 
-  const { fileBase64, universityId } = body;
+  const { pageTexts, totalPages, universityId } = body;
 
-  if (!fileBase64 || typeof fileBase64 !== "string") {
-    return NextResponse.json({ error: "fileBase64 필드가 필요합니다." }, { status: 400 });
-  }
-
-  // ── 2. Decode base64 → Buffer ─────────────────────────────────────────────
-  let buffer: Buffer;
-  try {
-    buffer = Buffer.from(fileBase64, "base64");
-  } catch {
-    return NextResponse.json({ error: "base64 디코딩 실패. 올바른 PDF 파일인지 확인하세요." }, { status: 400 });
-  }
-
-  // ── 3. Size guard (post-decode check on actual bytes) ─────────────────────
-  if (buffer.byteLength > MAX_BYTES) {
+  if (!Array.isArray(pageTexts) || pageTexts.length === 0) {
     return NextResponse.json(
-      {
-        error:
-          "파일이 너무 큽니다. " +
-          "필요한 학과 페이지(예: 소프트웨어학과 교육과정)만 별도로 추출하여 올려주세요. " +
-          `최대 허용 크기: ${MAX_BYTES / 1024 / 1024}MB`,
-      },
-      { status: 413 }
+      { error: "pageTexts 배열이 필요합니다. 클라이언트에서 PDF 텍스트를 추출한 후 전송하세요." },
+      { status: 400 },
     );
   }
 
-  // ── 4. Extract text per-page ──────────────────────────────────────────────
-  let extracted;
-  try {
-    extracted = await extractPdfText(buffer);
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "PDF 파싱 오류";
-    return NextResponse.json({ error: `PDF 텍스트 추출 실패: ${msg}` }, { status: 422 });
+  // ── 2. Text payload size guard ─────────────────────────────────────────────
+  const textBytes = Buffer.byteLength(JSON.stringify(pageTexts), "utf8");
+  if (textBytes > MAX_TEXT_BYTES) {
+    return NextResponse.json(
+      {
+        error:
+          "추출된 텍스트가 너무 큽니다. " +
+          "소프트웨어학과 교육과정 페이지(예: 98-115페이지)만 선별하여 올려주세요.",
+      },
+      { status: 413 },
+    );
   }
 
-  // ── 4a. Guard: empty text → scanned / image-only PDF ─────────────────────
-  if (!extracted.fullText || extracted.fullText.trim().length < 50) {
+  // ── 3. Build ExtractedPdf from client-supplied page texts ─────────────────
+  // No pdf2json needed — the browser already did the extraction.
+  const extracted: ExtractedPdf = {
+    pages:      pageTexts.map((p) => ({ pageNum: p.pageNum, text: p.text })),
+    totalPages: totalPages ?? pageTexts.length,
+    fullText:   pageTexts.map((p) => p.text).join("\n"),
+  };
+
+  // ── 4. Guard: empty / unrecognised text ───────────────────────────────────
+  if (extracted.fullText.trim().length < 50) {
     return NextResponse.json(
       {
         error:
           "PDF에서 텍스트를 추출할 수 없습니다. " +
-          "스캔된 이미지 PDF이거나 텍스트 레이어가 없는 파일입니다. " +
-          "편람 원본 PDF(텍스트 레이어 포함)를 업로드해주세요.",
+          "스캔된 이미지 PDF이거나 텍스트 레이어가 없는 파일입니다.",
       },
-      { status: 422 }
+      { status: 422 },
     );
   }
 
