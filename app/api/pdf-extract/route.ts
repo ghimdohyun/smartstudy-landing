@@ -15,7 +15,7 @@ import {
   buildCurriculumContext,
 } from "@/lib/pdf-engine";
 
-const MAX_BYTES = 20 * 1024 * 1024; // 20 MB
+const MAX_BYTES = 100 * 1024 * 1024; // 100 MB
 
 const CURRICULUM_QUERY =
   "소프트웨어학과 교육과정 전공필수 전공기초 전공선택 EO203 EO209 졸업학점";
@@ -51,7 +51,12 @@ export async function POST(req: NextRequest) {
   // ── 3. Size guard (post-decode check on actual bytes) ─────────────────────
   if (buffer.byteLength > MAX_BYTES) {
     return NextResponse.json(
-      { error: `PDF 크기가 너무 큽니다. 최대 ${MAX_BYTES / 1024 / 1024}MB까지 허용됩니다.` },
+      {
+        error:
+          "파일이 너무 큽니다. " +
+          "필요한 학과 페이지(예: 소프트웨어학과 교육과정)만 별도로 추출하여 올려주세요. " +
+          `최대 허용 크기: ${MAX_BYTES / 1024 / 1024}MB`,
+      },
       { status: 413 }
     );
   }

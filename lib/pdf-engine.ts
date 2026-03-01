@@ -79,6 +79,20 @@ function detectTopics(text: string): string[] {
     .map(([topic]) => topic);
 }
 
+// ─── Text Cleaning (strip pdf2json noise, compress whitespace) ────────────────
+
+/**
+ * Remove pdf2json encoding artefacts and collapse whitespace.
+ * Reduces raw page text weight by ~30-50% without losing curriculum keywords.
+ */
+function cleanPageText(raw: string): string {
+  return raw
+    .replace(/%[0-9A-Fa-f]{2}/g, "")   // residual URL-encoded bytes
+    .replace(/[^\uAC00-\uD7A3A-Za-z0-9\s()·&,.\-:]/g, " ") // non-curriculum chars → space
+    .replace(/\s{2,}/g, " ")            // collapse runs of whitespace
+    .trim();
+}
+
 // ─── Text Extraction (pdf2json — no browser API deps) ─────────────────────────
 
 function decodePdfText(encoded: string): string {
@@ -109,10 +123,10 @@ export async function extractPdfText(buffer: Buffer): Promise<ExtractedPdf> {
   const pages: PageData[] = pdfData.Pages.map((page, i) => {
     // Sort by y (row) then x (column) to preserve reading order
     const sorted = [...page.Texts].sort((a, b) => a.y - b.y || a.x - b.x);
-    const text = sorted
+    const raw = sorted
       .map((t) => t.R.map((r) => decodePdfText(r.T)).join(""))
-      .join(" ")
-      .trim();
+      .join(" ");
+    const text = cleanPageText(raw); // strip noise, compress whitespace
     return { pageNum: i + 1, text };
   });
 

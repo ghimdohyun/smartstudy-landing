@@ -176,7 +176,8 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
   const [result,   setResult]   = useState<PdfExtractResult | null>(null);
   const [error,    setError]    = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const MAX_PDF_BYTES = 20 * 1024 * 1024;
+  // 75 MB client-side cap: base64 overhead is ~33%, so 75 MB PDF → ~100 MB JSON body
+  const MAX_PDF_BYTES = 75 * 1024 * 1024;
 
   // FileReader → base64 (browser-safe, no Node.js Buffer)
   const readAsBase64 = (file: File): Promise<string> =>
@@ -192,7 +193,11 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
       setError("PDF 파일만 업로드할 수 있습니다."); return;
     }
     if (file.size > MAX_PDF_BYTES) {
-      setError("파일이 너무 큽니다. 20MB 이하의 PDF를 업로드해주세요."); return;
+      setError(
+        "파일이 너무 큽니다. " +
+        "소프트웨어학과 교육과정 페이지만 별도로 추출하여 올려주세요. (최대 75MB)"
+      );
+      return;
     }
     setFetching(true); setDone(false); setError(null); setResult(null);
     try {
@@ -277,7 +282,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
             <p className="text-[13px] text-gray-600 font-medium">
               {dragging ? "PDF를 여기에 놓으세요" : "경성대 편람 PDF 드래그 또는 클릭"}
             </p>
-            <p className="text-[11px] text-gray-400 mt-0.5">PDF · 최대 20MB · 텍스트 추출 + RAG 분석</p>
+            <p className="text-[11px] text-gray-400 mt-0.5">PDF · 최대 75MB · 텍스트 추출 + RAG 분석</p>
           </>
         )}
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
