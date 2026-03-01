@@ -320,9 +320,16 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
   const [error, setError]           = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  const MAX_PDF_BYTES = 20 * 1024 * 1024; // 20 MB
+
   const uploadPdf = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
       setError("PDF 파일만 업로드할 수 있습니다.");
+      return;
+    }
+
+    if (file.size > MAX_PDF_BYTES) {
+      setError("파일이 너무 큽니다. 20MB 이하의 PDF를 업로드해주세요.");
       return;
     }
 

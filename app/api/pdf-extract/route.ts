@@ -1,6 +1,8 @@
 // PDF extraction endpoint — multipart POST, returns structured curriculum data
 // Max 20 MB. Returns: totalPages, chunkCount, courses, validation, curriculumText
 
+export const maxDuration = 60; // allow up to 60s for large PDF parsing
+
 import { NextRequest, NextResponse } from "next/server";
 import {
   extractPdfText,
