@@ -2,49 +2,33 @@
 
 export default function Footer() {
   return (
-    <footer style={{
-      borderTop: '1px solid #e5e7eb',
-      padding: '36px 20px',
-      background: '#f9fafb',
-      fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-    }}>
-      <div style={{
-        maxWidth: 1100, margin: '0 auto',
-        display: 'flex', flexWrap: 'wrap', gap: 20,
-        justifyContent: 'space-between', alignItems: 'center',
-      }}>
+    <footer className="border-t border-gray-200 dark:border-slate-800 py-9 px-5 bg-gray-50 dark:bg-slate-950"
+      style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}>
+      <div className="max-w-[1100px] mx-auto flex flex-wrap gap-5 justify-between items-center">
         {/* Brand */}
         <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
-            <span style={{
-              width: 24, height: 24, borderRadius: 6,
-              background: 'linear-gradient(135deg,#667eea,#764ba2)',
-              display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 11, color: '#fff', fontWeight: 800,
-            }}>
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="w-6 h-6 rounded-[6px] flex items-center justify-center text-[11px] text-white font-extrabold shrink-0"
+              style={{ background: "linear-gradient(135deg,#667eea,#764ba2)" }}>
               DH
             </span>
-            <span style={{ fontSize: 14, fontWeight: 700, color: '#111827' }}>Dream Helixion</span>
+            <span className="text-[14px] font-bold text-gray-900 dark:text-gray-100">Dream Helixion</span>
           </div>
-          <p style={{ margin: 0, fontSize: 12, color: '#9ca3af' }}>
+          <p className="m-0 text-[12px] text-gray-400 dark:text-gray-500">
             AI 기반 수강 계획 서비스 — 현재 베타 운영 중
           </p>
         </div>
 
         {/* Links */}
-        <div style={{ display: 'flex', gap: 20, fontSize: 12 }}>
-          <a href="/terms" style={{ color: '#6b7280', textDecoration: 'none' }}>이용약관</a>
-          <a href="/privacy" style={{ color: '#6b7280', textDecoration: 'none' }}>개인정보처리방침</a>
-          <a
-            href="mailto:contact@dreamhelixion.com"
-            style={{ color: '#6b7280', textDecoration: 'none' }}
-          >
-            문의하기
-          </a>
+        <div className="flex gap-5 text-[12px]">
+          <a href="/terms"    className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 no-underline transition-colors">이용약관</a>
+          <a href="/privacy"  className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 no-underline transition-colors">개인정보처리방침</a>
+          <a href="mailto:contact@dreamhelixion.com"
+             className="text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 no-underline transition-colors">문의하기</a>
         </div>
 
         {/* Copyright */}
-        <p style={{ margin: 0, fontSize: 12, color: '#d1d5db' }}>
+        <p className="m-0 text-[12px] text-gray-400 dark:text-gray-600">
           © 2026 Dream Helixion. All rights reserved.
         </p>
       </div>

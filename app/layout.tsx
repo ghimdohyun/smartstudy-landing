@@ -17,27 +17,26 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://dreamhelixion.com"),
-  title: "Dream Helixion | AI 기반 서강대학교 수강신청 로드맵",
+  title: "Dream Helixion | AI 수강 계획 자동 생성",
   description:
-    "복잡한 수강신청은 이제 그만. AI가 당신의 꿈을 위한 최적의 1년 학업 계획과 4가지 시간표 안을 제안합니다. COR·LCS·HFS 교과목 체계 기반, 베타 무료.",
+    "시간표 사진만 올리면 AI가 전공·교양 수강 계획 4안과 1년 학습 로드맵을 즉시 생성합니다. 베타 무료.",
   keywords: [
     "수강 계획",
-    "서강대학교",
     "AI 수강신청",
     "시간표 추천",
     "1년 학습 로드맵",
-    "COR LCS HFS",
+    "수강 계획표",
     "Dream Helixion",
   ],
   icons: {
-    icon: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
-    shortcut: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
-    apple: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
+    icon: "https://i.ibb.co/8LDvhYvw/Gemini-Generated-Image-ol8g0jol8g0jol8g.png",
+    shortcut: "https://i.ibb.co/8LDvhYvw/Gemini-Generated-Image-ol8g0jol8g0jol8g.png",
+    apple: "https://i.ibb.co/8LDvhYvw/Gemini-Generated-Image-ol8g0jol8g0jol8g.png",
   },
   openGraph: {
-    title: "Dream Helixion | AI 기반 서강대학교 수강신청 로드맵",
+    title: "Dream Helixion | AI 수강 계획 자동 생성",
     description:
-      "AI가 만드는 맞춤 수강 계획 4안과 1년 학습 로드맵. 서강대 COR·LCS·HFS 체계 반영. 베타 무료.",
+      "AI가 만드는 맞춤 수강 계획 4안과 1년 학습 로드맵. 베타 무료.",
     url: "https://dreamhelixion.com",
     siteName: "Dream Helixion",
     type: "website",
@@ -53,9 +52,9 @@ export const metadata: Metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Dream Helixion | AI 기반 서강대학교 수강신청 로드맵",
+    title: "Dream Helixion | AI 수강 계획 자동 생성",
     description:
-      "AI가 만드는 맞춤 수강 계획 4안과 1년 학습 로드맵. 서강대 커리큘럼 기반.",
+      "AI가 만드는 맞춤 수강 계획 4안과 1년 학습 로드맵. 베타 무료.",
     site: "@dreamhelixion",
     creator: "@dreamhelixion",
     images: ["/favicon.ico"],

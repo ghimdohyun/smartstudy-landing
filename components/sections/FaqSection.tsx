@@ -20,7 +20,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: '시간표 이미지를 어떻게 사용하나요?',
-    a: '시간표 이미지를 웹에 업로드한 뒤(예: Imgur, Google Drive 공유링크) 해당 이미지의 직접 주소(URL)를 입력란에 붙여넣으면 AI가 자동으로 분석합니다.',
+    a: '시간표 이미지를 드래그하여 업로드하거나, 이미지 URL을 직접 입력할 수 있습니다. AI가 이미지를 분석하여 수강 계획을 생성합니다.',
   },
   {
     q: '어떤 학교 과목을 지원하나요?',
@@ -28,7 +28,7 @@ const FAQS: FaqItem[] = [
   },
   {
     q: 'JSON / CSV 내보내기는 어떻게 사용하나요?',
-    a: '계획 생성 완료 후 /plan 페이지에서 \'JSON 다운로드\' 또는 \'CSV 다운로드\' 버튼을 클릭하면 됩니다. CSV 파일은 Excel에서 한글이 깨지지 않도록 BOM이 포함되어 있습니다.',
+    a: "계획 생성 완료 후 /plan 페이지에서 'JSON 다운로드' 또는 'CSV 다운로드' 버튼을 클릭하면 됩니다. CSV 파일은 Excel에서 한글이 깨지지 않도록 BOM이 포함되어 있습니다.",
   },
   {
     q: '유료 플랜은 언제 출시되나요?',
@@ -42,80 +42,67 @@ export default function FaqSection() {
   return (
     <section
       id="faq"
-      style={{
-        padding: '72px 20px',
-        fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-      }}
+      className="py-[72px] px-5 bg-white dark:bg-slate-950"
+      style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
     >
-      <div style={{ maxWidth: 720, margin: '0 auto' }}>
+      <div className="max-w-[720px] mx-auto">
         {/* Heading */}
-        <div style={{ textAlign: 'center', marginBottom: 48 }}>
-          <p style={{
-            fontSize: 12, fontWeight: 700, color: '#7c3aed',
-            textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 12px',
-          }}>
+        <div className="text-center mb-12">
+          <p className="text-[12px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-[0.1em] m-0 mb-3">
             자주 묻는 질문
           </p>
-          <h2 style={{
-            fontSize: 'clamp(24px, 4vw, 34px)', fontWeight: 800, color: '#0f172a',
-            margin: '0 0 12px', letterSpacing: '-0.5px',
-          }}>
+          <h2 className="text-[clamp(24px,4vw,34px)] font-extrabold text-gray-900 dark:text-white m-0 mb-3 tracking-tight">
             FAQ
           </h2>
-          <p style={{ fontSize: 14, color: '#64748b', margin: 0 }}>
+          <p className="text-[14px] text-gray-500 dark:text-gray-400 m-0">
             궁금한 점이 더 있다면 우측 하단 상담 AI에게 물어보세요.
           </p>
         </div>
 
         {/* Accordion */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+        <div className="flex flex-col gap-2.5">
           {FAQS.map((item, i) => {
             const isOpen = openIndex === i;
             return (
               <div
                 key={i}
-                style={{
-                  background: '#fff', borderRadius: 14,
-                  border: `1px solid ${isOpen ? '#c4b5fd' : '#e5e7eb'}`,
-                  boxShadow: isOpen ? '0 4px 20px rgba(124,58,237,0.08)' : '0 1px 4px rgba(15,23,42,0.04)',
-                  overflow: 'hidden',
-                  transition: 'border-color 0.2s',
-                }}
+                className={[
+                  "rounded-2xl border overflow-hidden transition-all duration-200",
+                  "bg-white dark:bg-slate-900",
+                  isOpen
+                    ? "border-violet-300 dark:border-violet-700 shadow-[0_4px_20px_rgba(124,58,237,0.08)] dark:shadow-[0_4px_20px_rgba(124,58,237,0.12)]"
+                    : "border-gray-200 dark:border-slate-700 shadow-[0_1px_4px_rgba(15,23,42,0.04)]",
+                ].join(" ")}
               >
                 {/* Question row */}
                 <button
                   onClick={() => setOpenIndex(isOpen ? null : i)}
-                  style={{
-                    width: '100%', padding: '18px 20px',
-                    background: 'transparent', border: 'none',
-                    display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                    cursor: 'pointer', gap: 12, textAlign: 'left',
-                  }}
+                  className="w-full px-5 py-[18px] bg-transparent border-none flex justify-between items-center cursor-pointer gap-3 text-left"
                 >
-                  <span style={{
-                    fontSize: 14, fontWeight: 600,
-                    color: isOpen ? '#7c3aed' : '#111827', lineHeight: 1.5,
-                  }}>
+                  <span className={[
+                    "text-[14px] font-semibold leading-relaxed",
+                    isOpen
+                      ? "text-violet-700 dark:text-violet-400"
+                      : "text-gray-900 dark:text-gray-100",
+                  ].join(" ")}>
                     {item.q}
                   </span>
-                  <span style={{
-                    fontSize: 18, color: isOpen ? '#7c3aed' : '#9ca3af',
-                    flexShrink: 0, transform: isOpen ? 'rotate(45deg)' : 'none',
-                    transition: 'transform 0.2s',
-                    display: 'inline-block',
-                  }}>
+                  <span className={[
+                    "text-[18px] shrink-0 transition-transform duration-200 inline-block",
+                    isOpen
+                      ? "text-violet-600 dark:text-violet-400 rotate-45"
+                      : "text-gray-400 dark:text-gray-500",
+                  ].join(" ")}>
                     +
                   </span>
                 </button>
 
                 {/* Answer */}
                 {isOpen && (
-                  <div style={{
-                    padding: '0 20px 18px',
-                    fontSize: 14, color: '#4b5563', lineHeight: 1.75,
-                    borderTop: '1px solid #f3f4f6',
-                  }}>
-                    <p style={{ margin: '14px 0 0' }}>{item.a}</p>
+                  <div className="px-5 pb-[18px] border-t border-gray-100 dark:border-slate-800">
+                    <p className="mt-3.5 mb-0 text-[14px] text-gray-600 dark:text-gray-300 leading-[1.75]">
+                      {item.a}
+                    </p>
                   </div>
                 )}
               </div>

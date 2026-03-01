@@ -193,6 +193,23 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
   const [error,     setError]     = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
+  /** Sanitize extracted text: remove invalid Unicode, surrogates, PUA chars that cause JSON parse errors */
+  const sanitizeText = (raw: string): string => {
+    return raw
+      // Remove null bytes and C0/C1 control chars (except tab, LF, CR)
+      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "")
+      // Remove lone UTF-16 surrogates (would silently corrupt JSON.stringify)
+      .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "")
+      .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "")
+      // Remove Private Use Area characters that render as garbled glyphs (e.g. 㳼)
+      .replace(/[\uE000-\uF8FF]/g, "")
+      // Remove rare CJK Compatibility/Extension ranges that aren't real Hangul/Hanja
+      .replace(/[\u2E80-\u2EFF\u3000-\u303F\uFFF0-\uFFFF]/g, " ")
+      // Collapse multiple whitespace
+      .replace(/\s{2,}/g, " ")
+      .trim();
+  };
+
   /** Extract text client-side with pdfjs-dist, filter to curriculum pages only */
   const extractClientSide = async (
     file: File,
@@ -213,11 +230,13 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
       onProgress(p, totalPages);
       const page    = await pdf.getPage(p);
       const content = await page.getTextContent();
-      const text    = (content.items as Array<{ str?: string }>)
+      const rawText = (content.items as Array<{ str?: string }>)
         .map((it) => it.str ?? "")
         .join(" ")
         .replace(/\s{2,}/g, " ")
         .trim();
+      // Sanitize: strip surrogates, PUA chars, control chars that break JSON
+      const text = sanitizeText(rawText);
       // Keep only pages containing curriculum keywords — drops table-of-contents, photos, etc.
       if (text.length > 30 && CURRICULUM_KEYWORDS.some((kw) => text.includes(kw))) {
         pageTexts.push({ pageNum: p, text });
@@ -241,7 +260,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
       if (pageTexts.length === 0) {
         throw new Error(
           "커리큘럼 관련 페이지를 찾을 수 없습니다. " +
-          "스캔 이미지 PDF이거나 소프트웨어학과 편람이 아닐 수 있습니다.",
+          "스캔 이미지 PDF이거나 텍스트 레이어가 없는 파일일 수 있습니다.",
         );
       }
 
@@ -351,7 +370,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
         )}>
         <span className="text-2xl mb-1">📄</span>
         <p className="text-[13px] text-gray-600 font-medium">
-          {dragging ? "PDF를 여기에 놓으세요" : "경성대 편람 PDF 드래그 또는 클릭"}
+          {dragging ? "PDF를 여기에 놓으세요" : "편람 PDF 드래그 또는 클릭"}
         </p>
         <p className="text-[11px] text-gray-400 mt-0.5">PDF · 용량 무제한 · 브라우저 직접 추출 (서버 전송 없음)</p>
         <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"

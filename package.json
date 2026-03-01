@@ -14,6 +14,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "groq-sdk": "^0.37.0",
+    "html2canvas": "^1.4.1",
     "lucide-react": "^0.575.0",
     "micro": "^10.0.1",
     "next": "16.1.4",
