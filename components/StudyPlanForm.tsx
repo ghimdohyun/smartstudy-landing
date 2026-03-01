@@ -322,6 +322,19 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
 
   const MAX_PDF_BYTES = 20 * 1024 * 1024; // 20 MB
 
+  /** Reads a File as a base64 string (browser FileReader — no Node.js Buffer needed) */
+  const readAsBase64 = (file: File): Promise<string> =>
+    new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        // result: "data:application/pdf;base64,<base64>"
+        const result = reader.result as string;
+        resolve(result.split(",")[1]); // strip data URI prefix
+      };
+      reader.onerror = () => reject(new Error("파일 읽기 실패"));
+      reader.readAsDataURL(file);
+    });
+
   const uploadPdf = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
       setError("PDF 파일만 업로드할 수 있습니다.");
@@ -338,11 +351,16 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
     setResult(null);
 
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-      if (universityId) formData.append("universityId", universityId);
+      // Send as JSON + base64 — avoids Next.js multipart parser body limit
+      // (req.formData() bypasses experimental.serverActions.bodySizeLimit;
+      //  req.json() respects it correctly — see app/api/pdf-extract/route.ts)
+      const fileBase64 = await readAsBase64(file);
 
-      const res = await fetch("/api/pdf-extract", { method: "POST", body: formData });
+      const res = await fetch("/api/pdf-extract", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fileBase64, universityId }),
+      });
       if (!res.ok) {
         const err = await res.json().catch(() => ({})) as { error?: string };
         throw new Error(err.error ?? `오류 ${res.status}`);
