@@ -1,9 +1,7 @@
-// Plan A/B/C/D card — shadcn Card + Badge, dark mode aware
+// PlanCard — Manus-style dark card + instant download per plan
 "use client";
 
 import type { StudyPlan } from "@/types";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
 interface Props {
@@ -11,109 +9,103 @@ interface Props {
   index: number;
 }
 
-const PLAN_COLORS = [
-  { border: "#bfdbfe", accent: "#3b82f6", strategyBg: "#eff6ff", badge: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300", creditBadge: "bg-blue-100 text-blue-700 dark:bg-blue-950 dark:text-blue-300" },
-  { border: "#bbf7d0", accent: "#10b981", strategyBg: "#f0fdf4", badge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300", creditBadge: "bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300" },
-  { border: "#e9d5ff", accent: "#a855f7", strategyBg: "#fdf4ff", badge: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300", creditBadge: "bg-purple-100 text-purple-700 dark:bg-purple-950 dark:text-purple-300" },
-  { border: "#fed7aa", accent: "#f97316", strategyBg: "#fff7ed", badge: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300", creditBadge: "bg-orange-100 text-orange-700 dark:bg-orange-950 dark:text-orange-300" },
+const PLAN_META = [
+  { label: "Plan A", accent: "#3b82f6", glow: "rgba(59,130,246,0.3)"  },
+  { label: "Plan B", accent: "#10b981", glow: "rgba(16,185,129,0.3)"  },
+  { label: "Plan C", accent: "#a855f7", glow: "rgba(168,85,247,0.3)"  },
+  { label: "Plan D", accent: "#f97316", glow: "rgba(249,115,22,0.3)"  },
 ];
 
-function requirementClass(req: string): string {
-  if (req.includes("공통필수"))
-    return "bg-[#fde8eb] text-[#b5152b] dark:bg-rose-950 dark:text-rose-300";
-  if (req.includes("필수"))
-    return "bg-[#eef2ff] text-[#4338ca] dark:bg-indigo-950 dark:text-indigo-300";
-  return "bg-[#f0fdf4] text-[#166534] dark:bg-emerald-950 dark:text-emerald-300";
+function reqBadge(req: string): string {
+  if (req.includes("공통필수")) return "bg-rose-900/50 text-rose-300";
+  if (req.includes("필수"))     return "bg-indigo-900/50 text-indigo-300";
+  return "bg-emerald-900/50 text-emerald-300";
+}
+
+function downloadPlan(plan: StudyPlan, label: string) {
+  const lines = [
+    `# ${label} — ${plan.strategy ?? ""}`,
+    "",
+    "과목코드,과목명,학점,구분,요일,시간",
+    ...(plan.courses ?? []).map((c) =>
+      [c.code ?? "", c.name, c.credits ?? "", c.requirement ?? "", c.day ?? "", c.time ?? ""].join(",")
+    ),
+    "",
+    `총 학점: ${plan.totalCredits ?? ""}`,
+  ].join("\n");
+
+  const blob = new Blob(["\uFEFF" + lines], { type: "text/csv;charset=utf-8" });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href = url; a.download = `${label.toLowerCase().replace(" ", "-")}.csv`;
+  a.click(); URL.revokeObjectURL(url);
 }
 
 export default function PlanCard({ plan, index }: Props) {
-  const color = PLAN_COLORS[index % PLAN_COLORS.length];
+  const meta  = PLAN_META[index % PLAN_META.length];
+  const label = plan.label ?? meta.label;
 
   return (
-    <Card
-      className="flex-1 min-w-[280px] overflow-hidden rounded-2xl"
-      style={{ borderTop: `4px solid ${color.accent}` }}
+    <div className={cn(
+      "flex-1 min-w-[272px] rounded-2xl overflow-hidden",
+      "bg-gradient-to-b from-slate-900 to-slate-950",
+      "border border-slate-800",
+      "shadow-[0_4px_24px_rgba(0,0,0,0.5)]",
+      "flex flex-col"
+    )}
+    style={{ borderTop: `3px solid ${meta.accent}` }}
     >
-      <CardContent className="p-6">
-        {/* Plan label + credits */}
-        <div className="flex items-center mb-3 gap-2.5">
-          <Badge
-            variant="secondary"
-            className={cn("rounded-full text-xs font-bold px-3", color.badge)}
-          >
-            {plan.label ?? `Plan ${String.fromCharCode(65 + index)}`}
-          </Badge>
-          {plan.totalCredits !== undefined && (
-            <span className="text-xs text-gray-500 dark:text-gray-400">
-              총 {plan.totalCredits}학점
+      <div className="p-5 flex-1 flex flex-col">
+
+        {/* Header */}
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full"
+              style={{ background: `${meta.accent}20`, color: meta.accent, border: `1px solid ${meta.accent}40` }}>
+              {label}
             </span>
-          )}
+            {plan.totalCredits !== undefined && (
+              <span className="text-[11px] text-slate-500 font-mono">{plan.totalCredits}학점</span>
+            )}
+          </div>
         </div>
 
         {/* Strategy */}
         {plan.strategy && (
-          <p
-            className="text-[13px] text-gray-700 dark:text-gray-300 mb-3 px-3 py-2 rounded-lg"
-            style={{
-              background: color.strategyBg,
-              borderLeft: `3px solid ${color.accent}`,
-            }}
-          >
+          <p className="text-[12px] text-slate-400 leading-relaxed mb-3 pl-3"
+            style={{ borderLeft: `2px solid ${meta.accent}60` }}>
             {plan.strategy}
           </p>
         )}
 
         {/* Course list */}
         {(plan.courses ?? []).length > 0 && (
-          <ul className="m-0 p-0 list-none flex flex-col gap-1.5">
-            {(plan.courses ?? []).map((course, i) => (
-              <li
-                key={i}
-                className="text-[13px] px-2.5 py-1.5 bg-gray-50 dark:bg-neutral-800 rounded-lg flex justify-between items-center"
-              >
-                {/* Left: name + badges */}
-                <div className="flex flex-col gap-1 min-w-0">
-                  <span className="font-semibold text-gray-900 dark:text-gray-100">
-                    {course.name}
-                  </span>
-                  {(course.code ?? course.requirement) && (
-                    <div className="flex gap-1 flex-wrap">
-                      {course.code && (
-                        <span className="text-[10px] px-1.5 py-0.5 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded font-mono tracking-wide">
-                          {course.code}
-                        </span>
-                      )}
-                      {course.requirement && (
-                        <span
-                          className={cn(
-                            "text-[10px] px-1.5 py-0.5 rounded font-semibold",
-                            requirementClass(course.requirement)
-                          )}
-                        >
-                          {course.requirement}
-                        </span>
-                      )}
-                    </div>
-                  )}
+          <ul className="space-y-1.5 flex-1">
+            {(plan.courses ?? []).map((c, i) => (
+              <li key={i} className="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-800/50 hover:bg-slate-800/80 transition-colors">
+                <div className="min-w-0 flex-1">
+                  <p className="text-[13px] font-semibold text-slate-100 truncate">{c.name}</p>
+                  <div className="flex flex-wrap gap-1 mt-0.5">
+                    {c.code && (
+                      <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-700/80 text-slate-400 tracking-wide">
+                        {c.code}
+                      </span>
+                    )}
+                    {c.requirement && (
+                      <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded", reqBadge(c.requirement))}>
+                        {c.requirement}
+                      </span>
+                    )}
+                  </div>
                 </div>
-
-                {/* Right: credits + day */}
-                <div className="flex gap-1.5 items-center shrink-0 ml-2">
-                  {course.credits !== undefined && (
-                    <Badge
-                      variant="secondary"
-                      className={cn(
-                        "rounded-full text-xs font-bold px-2 py-0",
-                        color.creditBadge
-                      )}
-                    >
-                      {course.credits}학점
-                    </Badge>
-                  )}
-                  {course.day && (
-                    <span className="text-[11px] text-gray-400 dark:text-gray-500">
-                      {course.day}
+                <div className="flex flex-col items-end gap-1 shrink-0">
+                  {c.credits !== undefined && (
+                    <span className="text-[11px] font-mono font-bold" style={{ color: meta.accent }}>
+                      {c.credits}학점
                     </span>
+                  )}
+                  {c.day && (
+                    <span className="text-[10px] text-slate-600 font-mono">{c.day}</span>
                   )}
                 </div>
               </li>
@@ -121,13 +113,34 @@ export default function PlanCard({ plan, index }: Props) {
           </ul>
         )}
 
-        {/* Note */}
         {plan.note && (
-          <p className="text-[11px] text-gray-400 dark:text-gray-500 mt-2.5">
-            {plan.note}
-          </p>
+          <p className="mt-3 text-[11px] text-slate-600 font-mono">{plan.note}</p>
         )}
-      </CardContent>
-    </Card>
+      </div>
+
+      {/* Download button */}
+      <div className="px-5 pb-4">
+        <button type="button" onClick={() => downloadPlan(plan, label)}
+          className={cn(
+            "w-full py-2 rounded-xl text-[12px] font-bold transition-all",
+            "border text-center font-mono tracking-wide"
+          )}
+          style={{
+            borderColor: `${meta.accent}40`,
+            color: meta.accent,
+            background: `${meta.accent}0d`,
+          }}
+          onMouseEnter={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}20`;
+            (e.currentTarget as HTMLButtonElement).style.boxShadow  = `0 0 12px ${meta.glow}`;
+          }}
+          onMouseLeave={(e) => {
+            (e.currentTarget as HTMLButtonElement).style.background = `${meta.accent}0d`;
+            (e.currentTarget as HTMLButtonElement).style.boxShadow  = "none";
+          }}>
+          ↓ CSV 다운로드
+        </button>
+      </div>
+    </div>
   );
 }

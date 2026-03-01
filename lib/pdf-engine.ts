@@ -1,6 +1,5 @@
-// PDF RAG Engine — text extraction, semantic chunking, curriculum parsing, retrieval
-// Uses pdf-parse (dynamic import for Next.js App Router compatibility)
-// Emergency Pivot: chunk-first RAG architecture; no raw full-text dump to LLM
+// PDF RAG Engine — text extraction (pdf2json), semantic chunking, curriculum parsing, retrieval
+// Uses pdf2json (Node.js native, no browser APIs — fixes DOMMatrix is not defined from pdfjs)
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -40,22 +39,25 @@ export interface ValidationResult {
   context?: string;
 }
 
-// ─── Priority Page Ranges (경성대 편람 기준) ────────────────────────────────────
-// These ranges receive boosted retrieval scores
+// ─── pdf2json internal types ──────────────────────────────────────────────────
 
-const PRIORITY_PAGE_RANGES: Array<{ start: number; end: number; weight: number; label: string }> = [
-  { start: 8,   end: 15,  weight: 3, label: "졸업학점_이수구조" },
-  { start: 98,  end: 110, weight: 5, label: "소프트웨어학과_교육과정" },
-  { start: 55,  end: 75,  weight: 2, label: "교양_편성표" },
+interface PDF2JsonTextRun  { T: string }               // URL-encoded text fragment
+interface PDF2JsonText     { x: number; y: number; R: PDF2JsonTextRun[] }
+interface PDF2JsonPage     { Texts: PDF2JsonText[] }
+interface PDF2JsonData     { Pages: PDF2JsonPage[] }
+
+// ─── Priority Page Ranges (경성대 편람 기준) ────────────────────────────────────
+
+const PRIORITY_PAGE_RANGES: Array<{ start: number; end: number; weight: number }> = [
+  { start: 8,   end: 15,  weight: 3 },   // 졸업학점 이수구조
+  { start: 98,  end: 110, weight: 5 },   // 소프트웨어학과 교육과정 ← 102페이지
+  { start: 55,  end: 75,  weight: 2 },   // 교양 편성표
 ];
 
-function getPriorityScore(startPage: number, endPage: number): number {
+function getPriorityScore(start: number, end: number): number {
   let score = 0;
-  for (const range of PRIORITY_PAGE_RANGES) {
-    // Overlap check
-    if (startPage <= range.end && endPage >= range.start) {
-      score = Math.max(score, range.weight);
-    }
+  for (const r of PRIORITY_PAGE_RANGES) {
+    if (start <= r.end && end >= r.start) score = Math.max(score, r.weight);
   }
   return score;
 }
@@ -63,87 +65,70 @@ function getPriorityScore(startPage: number, endPage: number): number {
 // ─── Topic Detection ──────────────────────────────────────────────────────────
 
 const TOPIC_KEYWORD_MAP: Record<string, string[]> = {
-  "학점이수구조":  ["학점이수", "졸업학점", "이수구조", "총학점", "이수기준"],
+  "학점이수구조":   ["학점이수", "졸업학점", "이수구조", "총학점"],
   "소프트웨어학과": ["소프트웨어학과", " EO", "QY", "교육과정", "전공기초", "전공선택"],
-  "수강신청":     ["수강신청", "수강정정", "수강취소", "예비수강"],
-  "졸업요건":     ["졸업요건", "졸업자격", "졸업학점", "졸업신청"],
-  "교양편성":     ["교양필수", "교양선택", "교양편성", "자기관리", "디지털", "소통"],
-  "전공필수":     ["전공필수", "EO203", "EO209", "전산수학", "리눅스"],
-  "학과안내":     ["학과소개", "학과장", "교수진", "연락처"],
+  "수강신청":      ["수강신청", "수강정정", "수강취소"],
+  "졸업요건":      ["졸업요건", "졸업자격", "졸업학점", "졸업신청"],
+  "교양편성":      ["교양필수", "교양선택", "교양편성", "자기관리", "디지털", "소통"],
+  "전공필수":      ["전공필수", "EO203", "EO209", "전산수학", "리눅스"],
 };
 
 function detectTopics(text: string): string[] {
-  const found: string[] = [];
-  for (const [topic, keywords] of Object.entries(TOPIC_KEYWORD_MAP)) {
-    if (keywords.some((kw) => text.includes(kw))) {
-      found.push(topic);
-    }
-  }
-  return found;
+  return Object.entries(TOPIC_KEYWORD_MAP)
+    .filter(([, kws]) => kws.some((kw) => text.includes(kw)))
+    .map(([topic]) => topic);
 }
 
-// ─── Text Extraction ──────────────────────────────────────────────────────────
+// ─── Text Extraction (pdf2json — no browser API deps) ─────────────────────────
+
+function decodePdfText(encoded: string): string {
+  try { return decodeURIComponent(encoded); } catch { return encoded; }
+}
 
 /**
- * Extracts text from a PDF buffer, returning per-page data.
- * Uses pdf-parse with pagerender callback for accurate per-page extraction.
+ * Extracts per-page text from a PDF buffer using pdf2json.
+ * pdf2json is pure Node.js and does NOT use pdfjs-dist/canvas/DOMMatrix.
  */
-type PdfParseResult = { text: string; numpages: number };
-type PdfParseOptions = { pagerender?: (pageData: unknown) => Promise<string> };
-type PdfParseFn = (buffer: Buffer, options?: PdfParseOptions) => Promise<PdfParseResult>;
-
 export async function extractPdfText(buffer: Buffer): Promise<ExtractedPdf> {
-  // Dynamic require avoids Next.js SSR build issues with pdf-parse
   // eslint-disable-next-line @typescript-eslint/no-require-imports
-  const pdfParse = require("pdf-parse") as PdfParseFn;
-
-  const pages: PageData[] = [];
-
-  const options: PdfParseOptions = {
-    // pagerender is called once per page during parsing
-    pagerender: async (pageData: unknown) => {
-      const pd = pageData as { pageIndex: number; getTextContent: () => Promise<{ items: Array<{ str: string }> }> };
-      try {
-        const content = await pd.getTextContent();
-        const text = content.items.map((item) => item.str).join(" ").trim();
-        pages.push({ pageNum: pd.pageIndex + 1, text });
-      } catch {
-        pages.push({ pageNum: pd.pageIndex + 1, text: "" });
-      }
-      return "";
-    },
+  const PDFParser = require("pdf2json") as new () => {
+    on(event: "pdfParser_dataReady", cb: (data: PDF2JsonData) => void): void;
+    on(event: "pdfParser_dataError", cb: (e: { parserError: Error | string }) => void): void;
+    parseBuffer(buf: Buffer): void;
   };
 
-  const result = await pdfParse(buffer, options);
+  const pdfData = await new Promise<PDF2JsonData>((resolve, reject) => {
+    const parser = new PDFParser();
+    parser.on("pdfParser_dataError", (e) => {
+      reject(new Error(typeof e.parserError === "string" ? e.parserError : e.parserError?.message ?? "PDF 파싱 실패"));
+    });
+    parser.on("pdfParser_dataReady", resolve);
+    parser.parseBuffer(buffer);
+  });
 
-  // pdf-parse's pagerender may not fire on all versions; fallback to splitting result.text
-  if (pages.length === 0 && result.text) {
-    const rawPages = result.text.split(/\f/).filter(Boolean);
-    rawPages.forEach((t: string, i: number) => pages.push({ pageNum: i + 1, text: t.trim() }));
-  }
+  const pages: PageData[] = pdfData.Pages.map((page, i) => {
+    // Sort by y (row) then x (column) to preserve reading order
+    const sorted = [...page.Texts].sort((a, b) => a.y - b.y || a.x - b.x);
+    const text = sorted
+      .map((t) => t.R.map((r) => decodePdfText(r.T)).join(""))
+      .join(" ")
+      .trim();
+    return { pageNum: i + 1, text };
+  });
 
-  // Ensure pages are sorted by pageNum
-  pages.sort((a, b) => a.pageNum - b.pageNum);
+  const fullText = pages.map((p) => p.text).join("\n");
 
-  return {
-    pages,
-    totalPages: result.numpages ?? pages.length,
-    fullText: result.text ?? pages.map((p) => p.text).join("\n"),
-  };
+  return { pages, totalPages: pages.length, fullText };
 }
 
 // ─── Chunking ─────────────────────────────────────────────────────────────────
 
-/**
- * Groups pages into fixed-size chunks with topic labels and priority scores.
- * Chunk size of 10 pages balances context richness vs LLM token cost.
- */
 export function chunkPdfByPages(extracted: ExtractedPdf, chunkSize = 10): PdfChunk[] {
   const { pages } = extracted;
   const chunks: PdfChunk[] = [];
 
   for (let i = 0; i < pages.length; i += chunkSize) {
-    const slice = pages.slice(i, i + chunkSize);
+    const slice     = pages.slice(i, i + chunkSize);
     const startPage = slice[0].pageNum;
     const endPage   = slice[slice.length - 1].pageNum;
     const text      = slice.map((p) => p.text).join("\n");
@@ -163,33 +148,21 @@ export function chunkPdfByPages(extracted: ExtractedPdf, chunkSize = 10): PdfChu
 
 // ─── Retrieval ────────────────────────────────────────────────────────────────
 
-/** Simple TF-based keyword score (no embeddings required) */
 function tfScore(text: string, query: string): number {
-  const queryTerms = query.split(/\s+/).filter(Boolean);
-  const textLower  = text.toLowerCase();
-  return queryTerms.reduce((sum, term) => {
-    const regex  = new RegExp(term.toLowerCase(), "g");
-    const hits   = (textLower.match(regex) ?? []).length;
+  const terms = query.split(/\s+/).filter(Boolean);
+  const lower = text.toLowerCase();
+  return terms.reduce((sum, t) => {
+    const hits = (lower.match(new RegExp(t.toLowerCase(), "g")) ?? []).length;
     return sum + hits;
   }, 0);
 }
 
-/**
- * Retrieves the top-K most relevant chunks for a given query.
- * Score = TF keyword score + priority page boost × 10.
- */
-export function retrieveRelevantChunks(
-  chunks: PdfChunk[],
-  query: string,
-  topK = 3
-): PdfChunk[] {
-  const scored = chunks.map((chunk) => ({
-    chunk,
-    score: tfScore(chunk.text, query) + chunk.priorityScore * 10,
-  }));
-
-  scored.sort((a, b) => b.score - a.score);
-  return scored.slice(0, topK).map((s) => s.chunk);
+export function retrieveRelevantChunks(chunks: PdfChunk[], query: string, topK = 3): PdfChunk[] {
+  return [...chunks]
+    .map((c) => ({ c, score: tfScore(c.text, query) + c.priorityScore * 10 }))
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK)
+    .map((s) => s.c);
 }
 
 // ─── Curriculum Table Parser ──────────────────────────────────────────────────
@@ -197,14 +170,9 @@ export function retrieveRelevantChunks(
 const COURSE_REGEX =
   /\b([A-Z]{2,3}\d{3,4}[A-Z]?)\s+([\uAC00-\uD7A3A-Za-z0-9 &()·]+?)\s+(\d)\s+(전공필수|전공선택|전공기초|교양필수|교양선택|공통필수|공통선택)/g;
 
-/**
- * Parses structured course rows from free text using curriculum table regex.
- * Targets patterns like: "EO203 전산수학 3 전공기초"
- */
 export function parseCurriculumTable(text: string): CourseRow[] {
   const rows: CourseRow[] = [];
   const seen = new Set<string>();
-
   let match: RegExpExecArray | null;
   COURSE_REGEX.lastIndex = 0;
 
@@ -213,38 +181,20 @@ export function parseCurriculumTable(text: string): CourseRow[] {
     const key = `${code}-${name.trim()}`;
     if (!seen.has(key)) {
       seen.add(key);
-      rows.push({
-        code:     code.trim(),
-        name:     name.trim(),
-        credits:  parseInt(creditsStr, 10),
-        category: category.trim(),
-      });
+      rows.push({ code: code.trim(), name: name.trim(), credits: parseInt(creditsStr, 10), category: category.trim() });
     }
   }
-
   return rows;
 }
 
 // ─── Validation ──────────────────────────────────────────────────────────────
 
-/**
- * Searches chunks for a specific course code and returns validation metadata.
- * Used to confirm EO203/EO209 were correctly read from the PDF.
- */
-export function findCourseInChunks(
-  chunks: PdfChunk[],
-  courseCode: string
-): ValidationResult {
+export function findCourseInChunks(chunks: PdfChunk[], courseCode: string): ValidationResult {
   for (const chunk of chunks) {
     const idx = chunk.text.indexOf(courseCode);
     if (idx !== -1) {
-      const contextStart = Math.max(0, idx - 40);
-      const contextEnd   = Math.min(chunk.text.length, idx + 80);
-      return {
-        found:     true,
-        pageRange: `${chunk.startPage}-${chunk.endPage}페이지`,
-        context:   chunk.text.slice(contextStart, contextEnd).replace(/\s+/g, " ").trim(),
-      };
+      const ctx = chunk.text.slice(Math.max(0, idx - 40), Math.min(chunk.text.length, idx + 80));
+      return { found: true, pageRange: `${chunk.startPage}-${chunk.endPage}페이지`, context: ctx.replace(/\s+/g, " ").trim() };
     }
   }
   return { found: false };
@@ -252,37 +202,14 @@ export function findCourseInChunks(
 
 // ─── LLM Context Builder ──────────────────────────────────────────────────────
 
-/**
- * Builds a concise, LLM-ready curriculum context string from top chunks + parsed courses.
- * Injected as `timetableInfo` in the study plan prompt.
- */
-export function buildCurriculumContext(
-  chunks: PdfChunk[],
-  courses: CourseRow[],
-  universityId?: string
-): string {
-  const header = universityId
-    ? `[${universityId} PDF 편람 분석 결과]`
-    : "[PDF 편람 분석 결과]";
-
+export function buildCurriculumContext(chunks: PdfChunk[], courses: CourseRow[], universityId?: string): string {
+  const header    = universityId ? `[${universityId} PDF 편람 분석 결과]` : "[PDF 편람 분석 결과]";
   const courseLines = courses.length > 0
-    ? courses
-        .slice(0, 60) // guard against token overflow
-        .map((c) => `  ${c.code} ${c.name} ${c.credits}학점 (${c.category})`)
-        .join("\n")
+    ? courses.slice(0, 60).map((c) => `  ${c.code} ${c.name} ${c.credits}학점 (${c.category})`).join("\n")
     : "  (구조적 파싱 결과 없음 — 청크 텍스트 직접 참조)";
-
   const chunkTexts = chunks
     .map((c) => `[${c.startPage}-${c.endPage}페이지]\n${c.text.slice(0, 800)}`)
     .join("\n\n---\n\n");
 
-  return [
-    header,
-    "",
-    "## 추출된 교과목 목록",
-    courseLines,
-    "",
-    "## 관련 편람 내용 (상위 청크)",
-    chunkTexts,
-  ].join("\n");
+  return [header, "", "## 추출된 교과목 목록", courseLines, "", "## 관련 편람 내용 (상위 청크)", chunkTexts].join("\n");
 }

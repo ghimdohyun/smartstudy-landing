@@ -1,304 +1,173 @@
-// Study plan input form — shadcn Tabs + DnD ImageDropZone + PdfDropZone + Button, dark mode aware
+// StudyPlanForm — Manus-style command interface
+// Dark-first design: deep gradient card, terminal labels, agent progress log for PDF
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import type { StudyPlanInput } from "@/types";
-import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// ─── Image Drop Zone (multi-image) ────────────────────────────────────────────
-// Internally manages string[] of base64/URL sources.
-// Joins with "|||" → parent receives single imageUrl string for API compat.
+// ─── Agent Progress Log ────────────────────────────────────────────────────────
+
+const PDF_STEPS = [
+  "PDF 파일 수신 중...",
+  "텍스트 레이어 추출 중...",
+  "편람 청크 분할 및 인덱싱 중...",
+  "소프트웨어학과 커리큘럼 탐색 중...",
+  "리눅스시스템(EO209) 필수 조건 확인 중...",
+  "AI 컨텍스트 구성 완료",
+];
+
+const STEP_INTERVAL_MS = 1100;
+
+interface AgentLogProps {
+  active: boolean; // true while fetch is in progress
+  done: boolean;   // true when fetch completed
+}
+
+function AgentProgressLog({ active, done }: AgentLogProps) {
+  const [currentStep, setCurrentStep] = useState(0);
+
+  useEffect(() => {
+    if (!active) { setCurrentStep(0); return; }
+    const id = setInterval(() => {
+      setCurrentStep((s) => (s < PDF_STEPS.length - 1 ? s + 1 : s));
+    }, STEP_INTERVAL_MS);
+    return () => clearInterval(id);
+  }, [active]);
+
+  // On done, advance to last step
+  useEffect(() => {
+    if (done) setCurrentStep(PDF_STEPS.length - 1);
+  }, [done]);
+
+  if (!active && !done) return null;
+
+  return (
+    <div className="mt-3 rounded-xl border border-slate-700/60 bg-slate-950/80 px-4 py-3 font-mono text-[12px]">
+      {PDF_STEPS.map((step, i) => {
+        const isCompleted = done || i < currentStep;
+        const isCurrent   = !done && i === currentStep;
+        return (
+          <div key={i} className={cn("flex items-center gap-2.5 py-0.5 transition-opacity duration-300",
+            i > currentStep && !done ? "opacity-30" : "opacity-100"
+          )}>
+            <span className={cn("w-3.5 text-center shrink-0",
+              isCompleted ? "text-emerald-400" : isCurrent ? "text-yellow-400 animate-pulse" : "text-slate-600"
+            )}>
+              {isCompleted ? "✓" : isCurrent ? "●" : "○"}
+            </span>
+            <span className={cn(
+              isCompleted ? "text-emerald-300" : isCurrent ? "text-yellow-300" : "text-slate-500"
+            )}>
+              {step}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── Image Drop Zone ───────────────────────────────────────────────────────────
 
 const MAX_IMAGES = 20;
 
-interface DropZoneProps {
-  value: string;            // "|||"-joined composite string
+interface ImageDropZoneProps {
+  value: string;
   onChange: (url: string) => void;
 }
 
-function ImageDropZone({ value, onChange }: DropZoneProps) {
-  // Decompose stored value into individual URLs
-  const items: string[] = value
-    ? value.split("|||").map((s) => s.trim()).filter(Boolean)
-    : [];
-
+function ImageDropZone({ value, onChange }: ImageDropZoneProps) {
+  const items = value ? value.split("|||").map((s) => s.trim()).filter(Boolean) : [];
   const [dragging, setDragging] = useState(false);
-  const [urlMode, setUrlMode] = useState(false);
+  const [urlMode,  setUrlMode]  = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const pushItems = useCallback(
-    (newItems: string[]) => {
-      const merged = [...items, ...newItems].slice(0, MAX_IMAGES);
-      onChange(merged.join("|||"));
-    },
-    [items, onChange]
-  );
+  const push = useCallback((newItems: string[]) => {
+    onChange([...items, ...newItems].slice(0, MAX_IMAGES).join("|||"));
+  }, [items, onChange]);
 
-  const removeItem = (idx: number) => {
-    const next = items.filter((_, i) => i !== idx);
-    onChange(next.join("|||"));
-  };
-
-  const readFiles = useCallback(
-    (files: FileList) => {
-      const imageFiles = Array.from(files).filter((f) =>
-        f.type.startsWith("image/")
-      );
-      const remaining = MAX_IMAGES - items.length;
-      const toRead = imageFiles.slice(0, remaining);
-
-      const promises = toRead.map(
-        (file) =>
-          new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onloadend = () => resolve(reader.result as string);
-            reader.readAsDataURL(file);
-          })
-      );
-
-      Promise.all(promises).then((dataUrls) => {
-        pushItems(dataUrls);
-        setUrlMode(false);
-      });
-    },
-    [items.length, pushItems]
-  );
-
-  const onDrop = useCallback(
-    (e: React.DragEvent<HTMLDivElement>) => {
-      e.preventDefault();
-      setDragging(false);
-      if (e.dataTransfer.files.length) readFiles(e.dataTransfer.files);
-    },
-    [readFiles]
-  );
-
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files?.length) {
-      readFiles(e.target.files);
-      e.target.value = ""; // allow re-selecting same file
-    }
-  };
-
-  const onUrlSubmit = () => {
-    const trimmed = urlInput.trim();
-    if (trimmed) {
-      pushItems([trimmed]);
-      setUrlInput("");
-      setUrlMode(false);
-    }
-  };
-
-  const canAddMore = items.length < MAX_IMAGES;
+  const readFiles = useCallback((files: FileList) => {
+    const toRead = Array.from(files)
+      .filter((f) => f.type.startsWith("image/"))
+      .slice(0, MAX_IMAGES - items.length);
+    Promise.all(toRead.map((f) => new Promise<string>((res) => {
+      const r = new FileReader();
+      r.onloadend = () => res(r.result as string);
+      r.readAsDataURL(f);
+    }))).then(push);
+  }, [items.length, push]);
 
   return (
     <div>
-      {/* ── Thumbnail grid (when at least one image is set) ── */}
+      {/* Thumbnail grid */}
       {items.length > 0 && (
-        <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="grid grid-cols-2 gap-1.5 mb-2">
           {items.map((src, idx) => (
-            <div
-              key={idx}
-              className={cn(
-                "relative rounded-xl overflow-hidden",
-                "border border-emerald-200 dark:border-emerald-800",
-                "bg-black/5 dark:bg-black/20",
-                "shadow-[0_4px_12px_rgba(16,185,129,0.1)]"
-              )}
-            >
+            <div key={idx} className="relative rounded-lg overflow-hidden border border-slate-700">
               {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={src}
-                alt={`시간표 미리보기 ${idx + 1}`}
-                className="w-full h-28 object-contain"
-              />
-              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end px-2 py-1.5">
-                <p className="text-white text-[10px] font-semibold flex-1 truncate">
-                  {src.startsWith("data:") ? `✓ 이미지 ${idx + 1}` : src}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => removeItem(idx)}
-                  className="w-5 h-5 rounded-full bg-white/25 hover:bg-red-500/70 text-white text-[10px] flex items-center justify-center transition-colors ml-1"
-                  aria-label="이미지 제거"
-                >
-                  ✕
-                </button>
-              </div>
+              <img src={src} alt="" className="w-full h-20 object-contain bg-slate-900" />
+              <button type="button" onClick={() => onChange(items.filter((_, i) => i !== idx).join("|||"))}
+                className="absolute top-1 right-1 w-4 h-4 rounded-full bg-slate-800/80 text-slate-300 text-[9px] flex items-center justify-center hover:bg-red-600/80">
+                ✕
+              </button>
             </div>
           ))}
         </div>
       )}
 
-      {/* ── Drop zone (shown when can add more) ── */}
-      {canAddMore && (
+      {/* Drop zone */}
+      {items.length < MAX_IMAGES && (
         <div
-          role="button"
-          tabIndex={0}
-          aria-label="이미지 업로드 영역"
-          className={cn(
-            "relative flex flex-col items-center justify-center",
-            "rounded-2xl border-2 border-dashed cursor-pointer select-none",
-            "transition-all duration-300 px-4 py-5 text-center",
-            items.length > 0 ? "min-h-[100px]" : "min-h-[148px]",
-            "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
-            dragging
-              ? [
-                  "border-emerald-400 scale-[1.02]",
-                  "bg-gradient-to-br from-emerald-50/90 via-indigo-50/80 to-violet-50/70",
-                  "dark:from-emerald-950/60 dark:via-indigo-950/50 dark:to-violet-950/40",
-                ]
-              : [
-                  "border-gray-200 dark:border-gray-700",
-                  "bg-gradient-to-br from-gray-50/60 to-slate-50/60",
-                  "dark:from-neutral-800/60 dark:to-neutral-900/60",
-                  "hover:border-emerald-300 hover:from-emerald-50/40 hover:to-indigo-50/40",
-                  "dark:hover:border-emerald-700 dark:hover:from-emerald-950/30 dark:hover:to-indigo-950/30",
-                ]
-          )}
+          role="button" tabIndex={0}
           onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
-          onDrop={onDrop}
+          onDrop={(e) => { e.preventDefault(); setDragging(false); if (e.dataTransfer.files.length) readFiles(e.dataTransfer.files); }}
           onClick={() => fileRef.current?.click()}
           onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
+          className={cn(
+            "flex flex-col items-center justify-center min-h-[90px] rounded-lg border-2 border-dashed",
+            "cursor-pointer transition-all duration-200 select-none text-center px-3 py-4",
+            dragging
+              ? "border-emerald-500 bg-emerald-500/5"
+              : "border-slate-700 hover:border-slate-500 bg-slate-900/40"
+          )}
         >
-          {/* Monet glow ring */}
-          {dragging && (
-            <div
-              className="absolute inset-0 rounded-2xl pointer-events-none"
-              style={{
-                boxShadow:
-                  "0 0 0 3px rgba(16,185,129,0.5), 0 0 40px rgba(99,102,241,0.2), 0 0 80px rgba(16,185,129,0.1)",
-                animation: "monetGlow 1.4s ease-in-out infinite",
-              }}
+          <span className="text-2xl mb-1">🖼</span>
+          <p className="text-[12px] text-slate-400">
+            {dragging ? "놓으면 업로드" : items.length ? `이미지 추가 (${items.length}/${MAX_IMAGES})` : "드래그 또는 클릭"}
+          </p>
+          <p className="text-[11px] text-slate-600 mt-0.5">PNG · JPG · WEBP</p>
+          <input ref={fileRef} type="file" accept="image/*" multiple className="hidden"
+            onChange={(e) => { if (e.target.files?.length) { readFiles(e.target.files); e.target.value = ""; }}} />
+        </div>
+      )}
+
+      {/* URL input */}
+      <div className="flex items-center gap-2 mt-2">
+        {urlMode ? (
+          <>
+            <input type="url" value={urlInput} autoFocus placeholder="https://..." onChange={(e) => setUrlInput(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && urlInput.trim()) { push([urlInput.trim()]); setUrlInput(""); setUrlMode(false); }}}
+              className="flex-1 bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-[12px] text-slate-200 placeholder:text-slate-600 focus:outline-none focus:border-emerald-500"
             />
-          )}
-
-          {/* Floating particles on drag */}
-          {dragging && (
-            <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-              {[...Array(6)].map((_, i) => (
-                <div
-                  key={i}
-                  className="absolute rounded-full bg-emerald-400/30"
-                  style={{
-                    width: `${6 + i * 3}px`,
-                    height: `${6 + i * 3}px`,
-                    left: `${10 + i * 16}%`,
-                    animation: `floatUp ${1.2 + i * 0.2}s ease-in-out infinite ${i * 0.18}s`,
-                  }}
-                />
-              ))}
-            </div>
-          )}
-
-          {/* Icon */}
-          <div
-            className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5",
-              "transition-all duration-300 shadow-md",
-              dragging
-                ? "bg-gradient-to-br from-emerald-400 via-indigo-500 to-violet-600 scale-110 shadow-[0_8px_28px_rgba(16,185,129,0.5)]"
-                : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-700 dark:to-neutral-600"
-            )}
-          >
-            <svg
-              className={cn("w-6 h-6 transition-colors duration-300", dragging ? "text-white" : "text-gray-400")}
-              fill="none" stroke="currentColor" viewBox="0 0 24 24"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
-              />
-            </svg>
-          </div>
-
-          <p className={cn(
-            "text-[15px] font-bold mb-1 transition-all duration-300",
-            dragging ? "text-emerald-600 dark:text-emerald-300 scale-105" : "text-gray-700 dark:text-gray-200"
-          )}>
-            {dragging
-              ? "놓으면 업로드됩니다!"
-              : items.length > 0
-              ? `이미지 추가 (${items.length}/${MAX_IMAGES})`
-              : "시간표 이미지 드래그 또는 클릭"}
-          </p>
-          <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            PNG · JPG · WEBP · 최대 {MAX_IMAGES}장까지 동시 분석
-          </p>
-
-          <input
-            ref={fileRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={onFileChange}
-          />
-        </div>
-      )}
-
-      {/* URL divider */}
-      <div className="flex items-center gap-2 mt-3 mb-2">
-        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
-        <span className="text-[11px] text-gray-400 dark:text-gray-500 font-medium px-1 select-none">
-          또는 URL 직접 입력
-        </span>
-        <div className="flex-1 h-px bg-gray-200 dark:bg-gray-700" />
+            <button type="button" onClick={() => { if (urlInput.trim()) { push([urlInput.trim()]); setUrlInput(""); setUrlMode(false); }}}
+              className="text-[11px] px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-semibold">확인</button>
+            <button type="button" onClick={() => setUrlMode(false)} className="text-[11px] px-2 py-1.5 text-slate-400 hover:text-slate-200">취소</button>
+          </>
+        ) : (
+          items.length < MAX_IMAGES && (
+            <button type="button" onClick={() => setUrlMode(true)}
+              className="text-[11px] text-slate-500 hover:text-slate-300 transition-colors">URL로 입력 →</button>
+          )
+        )}
       </div>
-
-      {urlMode ? (
-        <div className="flex gap-2">
-          <Input
-            type="url"
-            value={urlInput}
-            onChange={(e) => setUrlInput(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && onUrlSubmit()}
-            placeholder="https://example.com/timetable.png"
-            className="flex-1 text-[15px] text-black placeholder:text-gray-400 bg-white border-gray-300 focus:border-emerald-400"
-            autoFocus
-          />
-          <Button type="button" size="sm" onClick={onUrlSubmit}
-            className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold">
-            확인
-          </Button>
-          <Button type="button" size="sm" variant="outline"
-            onClick={() => setUrlMode(false)} className="shrink-0 rounded-xl text-black">
-            취소
-          </Button>
-        </div>
-      ) : (
-        canAddMore && (
-          <button
-            type="button"
-            onClick={() => setUrlMode(true)}
-            className="w-full text-center text-[13px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold py-1 transition-colors"
-          >
-            URL로 입력하기 →
-          </button>
-        )
-      )}
-
-      {/* Keyframes */}
-      <style>{`
-        @keyframes monetGlow {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.55; }
-        }
-        @keyframes floatUp {
-          0% { transform: translateY(120%) scale(0.6); opacity: 0; }
-          40% { opacity: 0.7; }
-          100% { transform: translateY(-30px) scale(1); opacity: 0; }
-        }
-      `}</style>
     </div>
   );
 }
 
-// ─── PDF Drop Zone ─────────────────────────────────────────────────────────────
+// ─── PDF Drop Zone (Manus agent style) ────────────────────────────────────────
 
 interface PdfExtractResult {
   totalPages: number;
@@ -310,132 +179,82 @@ interface PdfExtractResult {
 
 interface PdfDropZoneProps {
   universityId?: string;
-  onExtracted: (result: PdfExtractResult) => void;
+  onExtracted: (r: PdfExtractResult) => void;
 }
 
 function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
-  const [dragging, setDragging]     = useState(false);
-  const [loading, setLoading]       = useState(false);
-  const [result, setResult]         = useState<PdfExtractResult | null>(null);
-  const [error, setError]           = useState<string | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [fetching, setFetching] = useState(false);
+  const [done,     setDone]     = useState(false);
+  const [result,   setResult]   = useState<PdfExtractResult | null>(null);
+  const [error,    setError]    = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const MAX_PDF_BYTES = 20 * 1024 * 1024; // 20 MB
+  const MAX_PDF_BYTES = 20 * 1024 * 1024;
 
-  /** Reads a File as a base64 string (browser FileReader — no Node.js Buffer needed) */
   const readAsBase64 = (file: File): Promise<string> =>
     new Promise((resolve, reject) => {
       const reader = new FileReader();
-      reader.onload = () => {
-        // result: "data:application/pdf;base64,<base64>"
-        const result = reader.result as string;
-        resolve(result.split(",")[1]); // strip data URI prefix
-      };
+      reader.onload  = () => resolve((reader.result as string).split(",")[1]);
       reader.onerror = () => reject(new Error("파일 읽기 실패"));
       reader.readAsDataURL(file);
     });
 
   const uploadPdf = useCallback(async (file: File) => {
     if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-      setError("PDF 파일만 업로드할 수 있습니다.");
-      return;
+      setError("PDF 파일만 업로드할 수 있습니다."); return;
     }
-
     if (file.size > MAX_PDF_BYTES) {
-      setError("파일이 너무 큽니다. 20MB 이하의 PDF를 업로드해주세요.");
-      return;
+      setError("파일이 너무 큽니다. 20MB 이하의 PDF를 업로드해주세요."); return;
     }
-
-    setLoading(true);
-    setError(null);
-    setResult(null);
-
+    setFetching(true); setDone(false); setError(null); setResult(null);
     try {
-      // Send as JSON + base64 — avoids Next.js multipart parser body limit
-      // (req.formData() bypasses experimental.serverActions.bodySizeLimit;
-      //  req.json() respects it correctly — see app/api/pdf-extract/route.ts)
       const fileBase64 = await readAsBase64(file);
-
       const res = await fetch("/api/pdf-extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ fileBase64, universityId }),
       });
       if (!res.ok) {
-        const err = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(err.error ?? `오류 ${res.status}`);
+        const e = await res.json().catch(() => ({})) as { error?: string };
+        throw new Error(e.error ?? `오류 ${res.status}`);
       }
-
       const data = await res.json() as PdfExtractResult;
       setResult(data);
       onExtracted(data);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "PDF 분석 실패");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "PDF 분석 실패");
     } finally {
-      setLoading(false);
+      setFetching(false); setDone(true);
     }
   }, [universityId, onExtracted]);
 
-  const onDrop = useCallback((e: React.DragEvent<HTMLDivElement>) => {
-    e.preventDefault();
-    setDragging(false);
-    const file = e.dataTransfer.files[0];
-    if (file) uploadPdf(file);
-  }, [uploadPdf]);
-
-  const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) uploadPdf(file);
-    e.target.value = "";
-  };
-
   // Success state
-  if (result) {
+  if (result && done) {
     const eo203 = result.validation?.["EO203"];
     const eo209 = result.validation?.["EO209"];
     return (
-      <div className="rounded-2xl border border-indigo-200 dark:border-indigo-800 bg-indigo-50 dark:bg-indigo-950/40 p-4">
+      <div className="rounded-xl border border-emerald-800/60 bg-emerald-950/30 p-4">
         <div className="flex items-center gap-2 mb-2">
-          <span className="text-2xl">📋</span>
-          <div>
-            <p className="text-[14px] font-bold text-indigo-700 dark:text-indigo-300">
-              {result.totalPages}페이지 분석 완료 · 과목 {result.courseCount}개 추출
-            </p>
-            <p className="text-[11px] text-indigo-500 dark:text-indigo-400">
-              {result.chunkCount}개 청크로 분할 · AI 컨텍스트 준비됨
-            </p>
-          </div>
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse shrink-0" />
+          <p className="text-[13px] font-semibold text-emerald-300">
+            {result.totalPages}페이지 완료 · 과목 {result.courseCount}개 추출 · {result.chunkCount}청크
+          </p>
         </div>
-        {/* Validation badges */}
-        <div className="flex flex-wrap gap-1.5 mt-2">
-          {eo203 && (
-            <span className={cn(
-              "text-[11px] font-semibold px-2 py-0.5 rounded-full",
-              eo203.found
-                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
-                : "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
-            )}>
-              EO203 {eo203.found ? `✓ ${eo203.pageRange ?? ""}` : "✗ 미발견"}
-            </span>
-          )}
-          {eo209 && (
-            <span className={cn(
-              "text-[11px] font-semibold px-2 py-0.5 rounded-full",
-              eo209.found
-                ? "bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300"
-                : "bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400"
-            )}>
-              EO209 {eo209.found ? `✓ ${eo209.pageRange ?? ""}` : "✗ 미발견"}
-            </span>
-          )}
+        <div className="flex flex-wrap gap-1.5">
+          {[["EO203", eo203], ["EO209", eo209]].map(([code, v]) => {
+            const val = v as { found: boolean; pageRange?: string } | undefined;
+            return val ? (
+              <span key={code as string} className={cn("text-[11px] font-mono font-semibold px-2 py-0.5 rounded-full",
+                val.found ? "bg-emerald-900/50 text-emerald-300" : "bg-red-900/50 text-red-400")}>
+                {code as string} {val.found ? `✓ ${val.pageRange ?? ""}` : "✗ 미발견"}
+              </span>
+            ) : null;
+          })}
         </div>
-        <button
-          type="button"
-          onClick={() => { setResult(null); setError(null); }}
-          className="mt-2 text-[12px] text-indigo-400 hover:text-indigo-600 dark:hover:text-indigo-300 transition-colors"
-        >
-          다른 PDF 업로드
-        </button>
+        <button type="button" onClick={() => { setResult(null); setDone(false); setError(null); }}
+          className="mt-2 text-[11px] text-slate-500 hover:text-slate-300 transition-colors">다른 PDF 업로드</button>
+        <AgentProgressLog active={false} done={true} />
       </div>
     );
   }
@@ -443,76 +262,44 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
   return (
     <div>
       <div
-        role="button"
-        tabIndex={0}
-        aria-label="PDF 업로드 영역"
-        className={cn(
-          "relative flex flex-col items-center justify-center",
-          "rounded-2xl border-2 border-dashed cursor-pointer select-none",
-          "transition-all duration-300 px-4 py-6 text-center min-h-[148px]",
-          "focus:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400",
-          loading && "pointer-events-none opacity-70",
-          dragging
-            ? "border-indigo-400 scale-[1.02] bg-gradient-to-br from-indigo-50/90 to-violet-50/70 dark:from-indigo-950/60 dark:to-violet-950/40"
-            : "border-gray-200 dark:border-gray-700 bg-gradient-to-br from-gray-50/60 to-slate-50/60 dark:from-neutral-800/60 dark:to-neutral-900/60 hover:border-indigo-300 dark:hover:border-indigo-700"
-        )}
+        role="button" tabIndex={0}
         onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
         onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => !loading && fileRef.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && !loading && fileRef.current?.click()}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) uploadPdf(f); }}
+        onClick={() => !fetching && fileRef.current?.click()}
+        onKeyDown={(e) => e.key === "Enter" && !fetching && fileRef.current?.click()}
+        className={cn(
+          "flex flex-col items-center justify-center min-h-[90px] rounded-lg border-2 border-dashed",
+          "cursor-pointer transition-all duration-200 select-none text-center px-3 py-4",
+          fetching && "pointer-events-none",
+          dragging ? "border-indigo-500 bg-indigo-500/5"
+            : "border-slate-700 hover:border-slate-500 bg-slate-900/40"
+        )}
       >
-        {loading ? (
-          <>
-            <div className="w-10 h-10 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin mb-3" />
-            <p className="text-[14px] font-semibold text-indigo-600 dark:text-indigo-400">
-              PDF 분석 중...
-            </p>
-            <p className="text-[12px] text-gray-400 mt-1">RAG 청크 생성 · 교과목 추출</p>
-          </>
+        {fetching ? (
+          <div className="flex items-center gap-2">
+            <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-400 border-t-transparent animate-spin" />
+            <span className="text-[12px] text-indigo-400 font-mono">분석 중...</span>
+          </div>
         ) : (
           <>
-            <div className={cn(
-              "w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5 shadow-md transition-all",
-              dragging
-                ? "bg-gradient-to-br from-indigo-400 to-violet-600 scale-110 shadow-[0_8px_28px_rgba(99,102,241,0.5)]"
-                : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-700 dark:to-neutral-600"
-            )}>
-              <svg className={cn("w-6 h-6 transition-colors", dragging ? "text-white" : "text-gray-400")}
-                fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
-                  d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
-                />
-              </svg>
-            </div>
-            <p className={cn(
-              "text-[15px] font-bold mb-1 transition-all",
-              dragging ? "text-indigo-600 dark:text-indigo-300 scale-105" : "text-gray-700 dark:text-gray-200"
-            )}>
-              {dragging ? "PDF를 여기에 놓으세요!" : "편람 PDF 드래그 또는 클릭"}
-            </p>
-            <p className="text-[12px] text-gray-400 dark:text-gray-500">
-              PDF · 최대 20MB · 텍스트 추출 + RAG 분석
-            </p>
+            <span className="text-2xl mb-1">📄</span>
+            <p className="text-[12px] text-slate-400">{dragging ? "PDF를 여기에 놓으세요" : "편람 PDF 드래그 또는 클릭"}</p>
+            <p className="text-[11px] text-slate-600 mt-0.5">PDF · 최대 20MB</p>
           </>
         )}
-        <input
-          ref={fileRef}
-          type="file"
-          accept="application/pdf,.pdf"
-          className="hidden"
-          onChange={onFileChange}
-        />
+        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
+          onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadPdf(f); e.target.value = ""; }} />
       </div>
 
-      {error && (
-        <p className="mt-2 text-[12px] text-red-500 font-medium">{error}</p>
-      )}
+      <AgentProgressLog active={fetching} done={done} />
+
+      {error && <p className="mt-2 text-[11px] text-red-400 font-mono">{error}</p>}
     </div>
   );
 }
 
-// ─── Main Form ────────────────────────────────────────────────────────────────
+// ─── Main Form ─────────────────────────────────────────────────────────────────
 
 interface Props {
   onSubmit: (input: StudyPlanInput) => void;
@@ -521,216 +308,147 @@ interface Props {
   error: string | null;
 }
 
-export default function StudyPlanForm({
-  onSubmit,
-  loading,
-  status,
-  error,
-}: Props) {
-  const [mode, setMode] = useState<"plans" | "year">("plans");
-  const [studentInfo, setStudentInfo] = useState("");
-  const [timetableInfo, setTimetableInfo] = useState("");
-  const [imageUrl, setImageUrl] = useState("");
-  const [uploadMode, setUploadMode] = useState<"image" | "pdf">("image");
-  const [pdfMode, setPdfMode] = useState(false);
+export default function StudyPlanForm({ onSubmit, loading, status, error }: Props) {
+  const [mode,         setMode]         = useState<"plans" | "year">("plans");
+  const [studentInfo,  setStudentInfo]  = useState("");
+  const [timetableInfo,setTimetableInfo]= useState("");
+  const [imageUrl,     setImageUrl]     = useState("");
+  const [uploadMode,   setUploadMode]   = useState<"image" | "pdf">("image");
+  const [pdfMode,      setPdfMode]      = useState(false);
 
   const universityId =
     typeof window !== "undefined"
       ? (localStorage.getItem("smartstudy_university") ?? undefined)
       : undefined;
 
-  const handlePdfExtracted = useCallback((result: PdfExtractResult) => {
-    setTimetableInfo(result.curriculumText);
+  const handlePdfExtracted = useCallback((r: PdfExtractResult) => {
+    setTimetableInfo(r.curriculumText);
     setPdfMode(true);
   }, []);
 
-  const handleUploadModeSwitch = (m: "image" | "pdf") => {
+  const handleModeSwitch = (m: "image" | "pdf") => {
     setUploadMode(m);
-    if (m === "image") {
-      setPdfMode(false);
-    }
+    if (m === "image") setPdfMode(false);
   };
 
-  const handleSubmit = () => {
+  const handleSubmit = () =>
     onSubmit({ studentInfo, timetableInfo, imageUrl, mode, universityId, pdfMode });
-  };
 
-  const isPlansMode = mode === "plans";
-
-  /* shared textarea style — always black text, larger font */
-  const textareaClass = cn(
-    "w-full px-3 py-2.5 text-[15px] rounded-xl resize-vertical",
-    "border border-gray-200 dark:border-gray-700",
-    "bg-white dark:bg-neutral-800",
-    "text-black",
-    "placeholder:text-gray-400",
-    "focus:outline-none focus:ring-2 focus:ring-indigo-400/30 focus:border-indigo-400",
-    "transition-colors"
+  /* shared input style */
+  const inputBase = cn(
+    "w-full bg-slate-900/60 border border-slate-700/80 rounded-xl px-4 py-3",
+    "text-[14px] text-slate-100 placeholder:text-slate-600",
+    "focus:outline-none focus:border-emerald-500/70 focus:ring-1 focus:ring-emerald-500/20",
+    "resize-vertical transition-colors font-sans"
   );
 
   return (
-    <div>
-      {/* Tab switcher */}
-      <div className="flex justify-center mb-4">
-        <Tabs
-          value={mode}
-          onValueChange={(v) => setMode(v as "plans" | "year")}
-        >
-          <TabsList className="rounded-full px-1 shadow-[0_10px_25px_rgba(15,23,42,0.08)]">
-            <TabsTrigger
-              value="plans"
-              className="rounded-full text-[14px] data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-[0_6px_12px_rgba(16,185,129,0.35)]"
-            >
-              수강 계획표 (Plan A~D)
-            </TabsTrigger>
-            <TabsTrigger
-              value="year"
-              className="rounded-full text-[14px] data-[state=active]:bg-emerald-500 data-[state=active]:text-white data-[state=active]:shadow-[0_6px_12px_rgba(16,185,129,0.35)]"
-            >
-              1년 학습 계획표
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+    <div className="w-full">
+      {/* Mode toggle pills */}
+      <div className="flex items-center gap-2 mb-5 justify-center">
+        {(["plans", "year"] as const).map((m) => (
+          <button key={m} type="button" onClick={() => setMode(m)}
+            className={cn(
+              "px-4 py-1.5 rounded-full text-[13px] font-semibold transition-all",
+              mode === m
+                ? "bg-emerald-500 text-white shadow-[0_0_16px_rgba(16,185,129,0.4)]"
+                : "text-slate-400 hover:text-slate-200 border border-slate-700 hover:border-slate-500"
+            )}>
+            {m === "plans" ? "수강 계획표 (A~D)" : "1년 로드맵"}
+          </button>
+        ))}
       </div>
 
-      {/* Form card */}
-      <div className="bg-white dark:bg-neutral-900 rounded-2xl shadow-[0_18px_40px_rgba(15,23,42,0.09)] dark:shadow-[0_18px_40px_rgba(0,0,0,0.3)] p-5">
-        {/* Title row */}
-        <div className="flex items-center mb-3">
-          <div className="w-7 h-7 rounded-full bg-emerald-50 dark:bg-emerald-950 flex items-center justify-center mr-2 shrink-0">
-            <span className="text-base text-emerald-500">★</span>
-          </div>
-          <h2 className="text-[18px] font-bold text-gray-900 dark:text-gray-100 m-0">
-            {isPlansMode ? "수강 계획표 입력" : "1년 학습 계획표 입력"}
-          </h2>
-        </div>
+      {/* Command card */}
+      <div className={cn(
+        "rounded-2xl border border-slate-800",
+        "bg-gradient-to-b from-slate-900 to-slate-950",
+        "shadow-[0_8px_32px_rgba(0,0,0,0.6)]",
+        "p-5 space-y-4"
+      )}>
 
-        <p className="text-[13px] text-gray-500 dark:text-gray-400 mb-3">
-          {isPlansMode
-            ? "아래 두 칸에 내용을 최대한 자세히 적을수록 더 정확한 수강 계획 4안이 만들어집니다."
-            : "1년 동안의 목표, 시간표, 동아리/인턴 계획 등을 적으면 학습 로드맵을 생성합니다."}
-        </p>
-
-        {/* Student info */}
-        <div className="mt-3">
-          <label className="block text-[14px] font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            학생 정보
+        {/* ─ Student Info ─ */}
+        <div>
+          <label className="flex items-center gap-2 text-[11px] font-mono text-slate-500 uppercase tracking-widest mb-2">
+            <span className="text-emerald-500">›</span> 학생 정보
           </label>
-          <textarea
-            rows={4}
-            value={studentInfo}
-            onChange={(e) => setStudentInfo(e.target.value)}
-            placeholder={"- 학교/학과/학년\n- 이번 학기 목표 학점\n- 진로/관심 분야 등"}
-            className={textareaClass}
+          <textarea rows={4} value={studentInfo} onChange={(e) => setStudentInfo(e.target.value)}
+            placeholder={"학교 / 학과 / 학년\n이번 학기 목표 학점\n진로 · 관심 분야"}
+            className={inputBase}
           />
         </div>
 
-        {/* Timetable info */}
-        <div className="mt-3">
-          <label className="block text-[14px] font-semibold text-gray-700 dark:text-gray-300 mb-1.5">
-            시간표/지침서 설명
+        {/* ─ Timetable Info ─ */}
+        <div>
+          <label className="flex items-center gap-2 text-[11px] font-mono text-slate-500 uppercase tracking-widest mb-2">
+            <span className="text-emerald-500">›</span> 시간표 / 수강 조건
             {pdfMode && (
-              <span className="ml-2 text-[11px] font-normal text-indigo-500 dark:text-indigo-400">
+              <span className="ml-auto text-[10px] font-sans text-emerald-400 normal-case tracking-normal">
                 ✓ PDF에서 자동 입력됨
               </span>
             )}
           </label>
-          <textarea
-            rows={pdfMode ? 3 : 4}
-            value={timetableInfo}
+          <textarea rows={pdfMode ? 3 : 4} value={timetableInfo} readOnly={pdfMode}
             onChange={(e) => setTimetableInfo(e.target.value)}
-            readOnly={pdfMode}
-            placeholder={
-              pdfMode
-                ? "PDF 분석 결과가 자동으로 입력되었습니다."
-                : "- 현재(또는 희망) 시간표\n- 꼭 듣고 싶은/피하고 싶은 과목\n- 기타 조건 등을 적어주세요."
-            }
-            className={cn(textareaClass, pdfMode && "opacity-60 cursor-default")}
+            placeholder={pdfMode ? "PDF 분석 결과가 입력되었습니다." : "희망 시간표 / 피하고 싶은 과목 / 기타 조건"}
+            className={cn(inputBase, pdfMode && "opacity-50 cursor-default")}
           />
         </div>
 
-        {/* Upload section — image or PDF */}
-        <div className="mt-4">
-          {/* Upload mode toggle */}
-          <div className="flex items-center gap-2 mb-2">
-            <label className="text-[14px] font-semibold text-gray-700 dark:text-gray-300">
-              자료 업로드
+        {/* ─ Upload zone ─ */}
+        <div>
+          <div className="flex items-center gap-3 mb-2">
+            <label className="text-[11px] font-mono text-slate-500 uppercase tracking-widest">
+              <span className="text-emerald-500">›</span> 자료 업로드
             </label>
-            <div className="ml-auto flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-[12px] font-semibold">
-              <button
-                type="button"
-                onClick={() => handleUploadModeSwitch("image")}
-                className={cn(
-                  "px-3 py-1 transition-colors",
-                  uploadMode === "image"
-                    ? "bg-emerald-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:text-emerald-600 dark:hover:text-emerald-400"
-                )}
-              >
-                이미지
-              </button>
-              <button
-                type="button"
-                onClick={() => handleUploadModeSwitch("pdf")}
-                className={cn(
-                  "px-3 py-1 transition-colors border-l border-gray-200 dark:border-gray-700",
-                  uploadMode === "pdf"
-                    ? "bg-indigo-500 text-white"
-                    : "text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400"
-                )}
-              >
-                PDF 편람
-              </button>
+            <div className="ml-auto flex rounded-lg overflow-hidden border border-slate-700 text-[11px] font-semibold">
+              {(["image", "pdf"] as const).map((m) => (
+                <button key={m} type="button" onClick={() => handleModeSwitch(m)}
+                  className={cn("px-3 py-1 transition-colors",
+                    m === "pdf" && "border-l border-slate-700",
+                    uploadMode === m
+                      ? m === "pdf" ? "bg-indigo-600 text-white" : "bg-emerald-600 text-white"
+                      : "text-slate-500 hover:text-slate-300"
+                  )}>
+                  {m === "image" ? "🖼 이미지" : "📄 PDF 편람"}
+                </button>
+              ))}
             </div>
           </div>
 
-          {uploadMode === "image" ? (
-            <ImageDropZone value={imageUrl} onChange={setImageUrl} />
-          ) : (
-            <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
-          )}
+          {uploadMode === "image"
+            ? <ImageDropZone value={imageUrl} onChange={setImageUrl} />
+            : <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
+          }
         </div>
 
-        {/* Submit */}
-        <div className="mt-5">
-          <Button
-            onClick={handleSubmit}
-            disabled={loading}
-            className={cn(
-              "w-full rounded-full text-[15px] font-bold py-5",
-              loading
-                ? "bg-gray-400 cursor-not-allowed shadow-none"
-                : "bg-emerald-500 hover:bg-emerald-600 shadow-[0_12px_22px_rgba(16,185,129,0.35)]"
-            )}
-          >
-            {loading ? "생성 중..." : "AI 결과 생성하기"}
-          </Button>
+        {/* ─ Submit ─ */}
+        <button type="button" onClick={handleSubmit} disabled={loading}
+          className={cn(
+            "w-full py-3.5 rounded-xl text-[14px] font-bold tracking-wide transition-all",
+            loading
+              ? "bg-slate-700 text-slate-500 cursor-not-allowed"
+              : cn(
+                "bg-emerald-500 hover:bg-emerald-400 text-white",
+                "shadow-[0_0_24px_rgba(16,185,129,0.35)] hover:shadow-[0_0_32px_rgba(16,185,129,0.5)]"
+              )
+          )}>
+          {loading ? "분석 중..." : "AI 계획 생성하기  →"}
+        </button>
 
-          {(status || error) && (
-            <p
-              className={cn(
-                "mt-2 text-[13px]",
-                error ? "text-red-500 font-medium" : "text-gray-500 dark:text-gray-400"
-              )}
-            >
-              {error ?? status}
-            </p>
-          )}
-        </div>
+        {(status || error) && (
+          <p className={cn("text-[12px] font-mono text-center",
+            error ? "text-red-400" : "text-slate-500")}>
+            {error ?? status}
+          </p>
+        )}
 
-        {/* Info hint */}
-        <div className="mt-3.5 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-900 text-[12px] text-emerald-800 dark:text-emerald-300 leading-relaxed">
-          {isPlansMode ? (
-            <>
-              • Plan A~D는 서로 다른 전략의 시간표를 제안합니다.
-              <br />• 1년 계획(yearPlan)에는 1학기/2학기 목표와 추천 과목이 함께 들어갑니다.
-            </>
-          ) : (
-            <>
-              • 1학기/2학기 별 학습 목표와 전략, 주간 루틴, 마일스톤, 리스크 대응까지 JSON으로 내려갑니다.
-            </>
-          )}
-        </div>
+        {/* Info chip */}
+        <p className="text-[11px] text-slate-600 text-center leading-relaxed">
+          {mode === "plans"
+            ? "Plan A~D — 각기 다른 전략의 21학점 시간표 · EO203 + EO209 포함 · 금요일 공강"
+            : "1학기/2학기 목표 · 주간 루틴 · 마일스톤 · 리스크 대응 포함"}
+        </p>
       </div>
     </div>
   );
