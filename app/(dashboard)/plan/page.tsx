@@ -2,14 +2,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { StudyPlanResult } from "@/types";
 import PlanCard from "@/components/PlanCard";
-import TimetableGrid from "@/components/TimetableGrid";
 import YearPlanView from "@/components/YearPlanView";
 import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
+
+// SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
+const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
+  ssr: false,
+  loading: () => <div className="h-40 flex items-center justify-center text-slate-400 dark:text-slate-500 text-[13px]">시간표 로딩 중...</div>,
+});
 
 // ─── 편람 근거 데이터 footer ───────────────────────────────────────────────────
 

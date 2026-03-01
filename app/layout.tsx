@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ThemeProvider } from "@/components/theme-provider";
 import { AuthSessionProvider } from "@/components/session-provider";
+import ErrorBoundary from "@/components/ErrorBoundary";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -73,7 +74,9 @@ export default function RootLayout({
       >
         <AuthSessionProvider>
           <ThemeProvider attribute="class" defaultTheme="light" enableSystem>
-            {children}
+            <ErrorBoundary>
+              {children}
+            </ErrorBoundary>
           </ThemeProvider>
         </AuthSessionProvider>
       </body>

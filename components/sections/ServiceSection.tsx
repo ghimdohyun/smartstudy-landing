@@ -4,11 +4,24 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import StudyPlanForm from '@/components/StudyPlanForm';
+import dynamic from 'next/dynamic';
 import UpgradeModal from '@/components/UpgradeModal';
 import ApiErrorModal from '@/components/ApiErrorModal';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStudyPlan } from '@/hooks/useStudyPlan';
+
+// SSR:false — StudyPlanForm uses FileReader, DnD, and pdf.js browser APIs that
+// do not exist in Node.js; prevents "window is not defined" hydration crashes.
+const StudyPlanForm = dynamic(() => import('@/components/StudyPlanForm'), {
+  ssr: false,
+  loading: () => (
+    <div className="space-y-3 py-2">
+      <Skeleton className="h-8 w-full rounded-xl" />
+      <Skeleton className="h-32 w-full rounded-xl" />
+      <Skeleton className="h-10 w-full rounded-xl" />
+    </div>
+  ),
+});
 
 // ─── Skeleton while AI is running ────────────────────────────────────────────
 
