@@ -18,7 +18,7 @@ function AiAnalysisSkeleton({ status }: { status: string }) {
       <div className="flex items-center justify-center gap-2.5 mb-6">
         <span className="inline-block w-2 h-2 rounded-full bg-indigo-500"
           style={{ animation: 'pulse 1.2s ease-in-out infinite' }} />
-        <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-400">
+        <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-300">
           {status || 'AI 분석 중...'}
         </span>
         <span className="inline-block w-2 h-2 rounded-full bg-violet-500"
@@ -87,7 +87,7 @@ function StepGuide() {
           {i < STEPS.length - 1 && (
             <span className="hidden sm:flex absolute -right-2 top-1/2 -translate-y-1/2 z-10
                              w-4 h-4 items-center justify-center
-                             text-[10px] text-slate-400 dark:text-slate-600">▶</span>
+                             text-[10px] text-slate-400 dark:text-slate-400">▶</span>
           )}
           <div className="flex flex-col items-center text-center
                           bg-white dark:bg-slate-900/60
@@ -99,7 +99,7 @@ function StepGuide() {
               {n}
             </span>
             <p className="text-[13px] font-bold text-slate-800 dark:text-slate-100 m-0 mb-1">{title}</p>
-            <p className="text-[12px] text-slate-500 dark:text-slate-400 m-0 leading-relaxed">{desc}</p>
+            <p className="text-[12px] text-slate-500 dark:text-slate-300 m-0 leading-relaxed">{desc}</p>
           </div>
         </div>
       ))}
@@ -159,7 +159,7 @@ function PersonaTabs() {
               'flex-1 py-2 px-2 rounded-lg text-[12px] font-semibold transition-all',
               active === p.id
                 ? 'bg-indigo-600 text-white shadow-sm'
-                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200',
+                : 'text-slate-500 dark:text-slate-300 hover:text-slate-700 dark:hover:text-white',
             ].join(' ')}>
             {p.icon} {p.title}
           </button>

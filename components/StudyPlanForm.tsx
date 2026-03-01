@@ -193,19 +193,17 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
   const [error,     setError]     = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
-  /** Sanitize extracted text: remove invalid Unicode, surrogates, PUA chars that cause JSON parse errors */
+  /**
+   * Aggressive sanitizer — whitelist-only approach.
+   * Keeps: printable ASCII (\x20-\x7E), Korean syllables (가-힣), Hangul Jamo, whitespace.
+   * Deletes everything else (surrogates, PUA, CJK Unified, special Unicode, garbled bytes).
+   * This is the nuclear option that prevents ANY non-standard char from reaching JSON.stringify.
+   */
   const sanitizeText = (raw: string): string => {
     return raw
-      // Remove null bytes and C0/C1 control chars (except tab, LF, CR)
-      .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F-\x9F]/g, "")
-      // Remove lone UTF-16 surrogates (would silently corrupt JSON.stringify)
-      .replace(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/g, "")
-      .replace(/(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g, "")
-      // Remove Private Use Area characters that render as garbled glyphs (e.g. 㳼)
-      .replace(/[\uE000-\uF8FF]/g, "")
-      // Remove rare CJK Compatibility/Extension ranges that aren't real Hangul/Hanja
-      .replace(/[\u2E80-\u2EFF\u3000-\u303F\uFFF0-\uFFFF]/g, " ")
-      // Collapse multiple whitespace
+      // Whitelist: ASCII printable + Korean (syllables + Jamo + Compatibility Jamo) + whitespace
+      // eslint-disable-next-line no-control-regex
+      .replace(/[^\x20-\x7E\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s]/g, "")
       .replace(/\s{2,}/g, " ")
       .trim();
   };
@@ -266,10 +264,19 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
 
       // ── Phase 2: send only the filtered text (KB-sized) to server ────────
       setPhase("sending");
+      // Guard: verify JSON serialization before sending (catches any remaining bad chars)
+      let requestBody: string;
+      try {
+        requestBody = JSON.stringify({ pageTexts, totalPages, universityId });
+      } catch {
+        throw new Error(
+          "파일 내 특수문자가 너무 많습니다. 텍스트로 복사해서 입력해주세요.",
+        );
+      }
       const res = await fetch("/api/pdf-extract", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ pageTexts, totalPages, universityId }),
+        body: requestBody,
       });
       if (!res.ok) {
         const e = await res.json().catch(() => ({})) as { error?: string };

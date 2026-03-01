@@ -180,8 +180,8 @@ export default function PlanPage() {
         {result.isDemo && (
           <div className="flex items-center gap-3 px-4 py-3 mb-5 rounded-2xl bg-white/96 dark:bg-slate-900/96 backdrop-blur-[20px] border border-white/60 dark:border-slate-700/60 shadow-[0_4px_24px_rgba(15,23,42,0.07)]">
             <span className="w-2 h-2 rounded-full bg-amber-400 shrink-0 shadow-[0_0_0_3px_rgba(245,158,11,0.18)]" />
-            <p className="m-0 text-[13px] text-gray-500 dark:text-gray-400">
-              <strong className="text-gray-800 dark:text-gray-200">데모 모드</strong> — AI 서버
+            <p className="m-0 text-[13px] text-gray-500 dark:text-gray-300">
+              <strong className="text-gray-800 dark:text-white">데모 모드</strong> — AI 서버
               점검 중입니다. 잠시 후 다시 시도하면 실제 맞춤 계획을 받을 수 있습니다.
             </p>
           </div>

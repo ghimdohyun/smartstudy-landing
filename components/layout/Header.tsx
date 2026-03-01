@@ -19,7 +19,7 @@ function NavLink({
   return (
     <a
       href={href}
-      className="px-3 py-1.5 text-[13px] font-medium text-gray-500 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100 rounded-lg transition-colors no-underline"
+      className="px-3 py-1.5 text-[13px] font-medium text-gray-500 hover:text-gray-900 dark:text-slate-300 dark:hover:text-white rounded-lg transition-colors no-underline"
     >
       {children}
     </a>
@@ -73,7 +73,7 @@ export default function Header() {
           <button
             disabled
             title="로그인 기능 준비 중"
-            className="dh-login px-4 py-[7px] bg-transparent text-gray-400 dark:text-gray-400 rounded-full text-[13px] font-medium border border-gray-200 dark:border-gray-600 cursor-not-allowed whitespace-nowrap"
+            className="dh-login px-4 py-[7px] bg-transparent text-gray-400 dark:text-slate-300 rounded-full text-[13px] font-medium border border-gray-200 dark:border-slate-600 cursor-not-allowed whitespace-nowrap"
           >
             로그인 (준비 중)
           </button>

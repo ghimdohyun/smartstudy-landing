@@ -1,4 +1,4 @@
-// Features overview section — core value propositions
+// Features overview section — core value propositions, dark mode aware
 
 const FEATURES = [
   {
@@ -49,56 +49,43 @@ export default function FeaturesSection() {
   return (
     <section
       id="features"
-      style={{
-        padding: '72px 20px',
-        fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif",
-      }}
+      className="py-[72px] px-5 bg-white dark:bg-slate-950"
+      style={{ fontFamily: "-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif" }}
     >
-      <div style={{ maxWidth: 1000, margin: '0 auto' }}>
+      <div className="max-w-[1000px] mx-auto">
         {/* Heading */}
-        <div style={{ textAlign: 'center', marginBottom: 52 }}>
-          <p style={{
-            fontSize: 12, fontWeight: 700, color: '#7c3aed',
-            textTransform: 'uppercase', letterSpacing: '0.1em', margin: '0 0 12px',
-          }}>
+        <div className="text-center mb-13">
+          <p className="text-[12px] font-bold text-violet-600 dark:text-violet-400 uppercase tracking-[0.1em] m-0 mb-3">
             기능 소개
           </p>
-          <h2 style={{
-            fontSize: 'clamp(24px, 4vw, 36px)', fontWeight: 800, color: '#0f172a',
-            margin: '0 0 14px', letterSpacing: '-0.5px',
-          }}>
+          <h2 className="text-[clamp(24px,4vw,36px)] font-extrabold text-gray-900 dark:text-white m-0 mb-3.5 tracking-tight">
             하나의 서비스로 모든 수강 고민 해결
           </h2>
-          <p style={{ fontSize: 15, color: '#64748b', margin: 0, maxWidth: 480, marginLeft: 'auto', marginRight: 'auto' }}>
+          <p className="text-[15px] text-slate-500 dark:text-slate-300 m-0 max-w-[480px] mx-auto">
             AI가 학생의 상황을 분석해 최적의 수강 계획을 자동으로 만들어드립니다.
           </p>
         </div>
 
         {/* Feature grid */}
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 20 }}>
+        <div className="flex flex-wrap gap-5 mt-13">
           {FEATURES.map((f) => (
             <div
               key={f.title}
-              style={{
-                flex: '1 1 280px', minWidth: 0,
-                background: '#fff', borderRadius: 16, padding: '22px 20px',
-                boxShadow: '0 2px 16px rgba(15,23,42,0.06)',
-                border: '1px solid #f1f5f9',
-              }}
+              className="flex-1 min-w-[280px] bg-white dark:bg-slate-900 rounded-2xl p-[22px_20px]
+                         border border-slate-100 dark:border-slate-800
+                         shadow-[0_2px_16px_rgba(15,23,42,0.06)] dark:shadow-[0_2px_16px_rgba(15,23,42,0.3)]"
             >
-              <div style={{ fontSize: 28, marginBottom: 12, lineHeight: 1 }}>{f.icon}</div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-                <h3 style={{ fontSize: 15, fontWeight: 700, color: '#111827', margin: 0 }}>
+              <div className="text-[28px] mb-3 leading-none">{f.icon}</div>
+              <div className="flex items-center gap-2 mb-2">
+                <h3 className="text-[15px] font-bold text-gray-900 dark:text-white m-0">
                   {f.title}
                 </h3>
-                <span style={{
-                  padding: '2px 9px', background: f.badgeBg, color: f.badgeColor,
-                  borderRadius: 999, fontSize: 10, fontWeight: 700, flexShrink: 0,
-                }}>
+                <span className="px-[9px] py-[2px] rounded-full text-[10px] font-bold shrink-0"
+                  style={{ background: f.badgeBg, color: f.badgeColor }}>
                   {f.badge}
                 </span>
               </div>
-              <p style={{ fontSize: 13, color: '#64748b', margin: 0, lineHeight: 1.65 }}>
+              <p className="text-[13px] text-slate-500 dark:text-slate-300 m-0 leading-[1.65]">
                 {f.desc}
               </p>
             </div>

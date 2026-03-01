@@ -6,6 +6,10 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "100mb",
     },
   },
+  // Force a unique build ID on every deployment to bust browser/CDN caches
+  generateBuildId: async () => {
+    return `build-${Date.now()}`;
+  },
 };
 
 export default nextConfig;
