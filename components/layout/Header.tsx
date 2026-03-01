@@ -2,8 +2,12 @@
 "use client";
 
 import Link from "next/link";
+import Image from "next/image";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
+
+const LOGO_URL =
+  "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png";
 
 function NavLink({
   href,
@@ -38,9 +42,14 @@ export default function Header() {
           href="/"
           className="flex items-center gap-2 mr-2 shrink-0 no-underline"
         >
-          <span className="w-7 h-7 rounded-lg bg-gradient-to-br from-[#667eea] to-[#764ba2] inline-flex items-center justify-center text-[13px] text-white font-extrabold">
-            DH
-          </span>
+          <Image
+            src={LOGO_URL}
+            alt="Dream Helixion"
+            width={32}
+            height={32}
+            className="rounded-lg shadow-sm"
+            unoptimized
+          />
           <span className="text-[15px] font-bold text-gray-900 dark:text-gray-100 tracking-tight whitespace-nowrap">
             Dream Helixion
           </span>

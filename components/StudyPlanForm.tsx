@@ -8,61 +8,134 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
-// ─── Image Drop Zone ──────────────────────────────────────────────────────────
+// ─── Image Drop Zone (multi-image) ────────────────────────────────────────────
+// Internally manages string[] of base64/URL sources.
+// Joins with "|||" → parent receives single imageUrl string for API compat.
+
+const MAX_IMAGES = 4;
 
 interface DropZoneProps {
-  value: string;
+  value: string;            // "|||"-joined composite string
   onChange: (url: string) => void;
 }
 
 function ImageDropZone({ value, onChange }: DropZoneProps) {
+  // Decompose stored value into individual URLs
+  const items: string[] = value
+    ? value.split("|||").map((s) => s.trim()).filter(Boolean)
+    : [];
+
   const [dragging, setDragging] = useState(false);
   const [urlMode, setUrlMode] = useState(false);
   const [urlInput, setUrlInput] = useState("");
   const fileRef = useRef<HTMLInputElement>(null);
 
-  const readFile = useCallback(
-    (file: File) => {
-      if (!file.type.startsWith("image/")) return;
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        onChange(reader.result as string);
-        setUrlMode(false);
-      };
-      reader.readAsDataURL(file);
+  const pushItems = useCallback(
+    (newItems: string[]) => {
+      const merged = [...items, ...newItems].slice(0, MAX_IMAGES);
+      onChange(merged.join("|||"));
     },
-    [onChange]
+    [items, onChange]
+  );
+
+  const removeItem = (idx: number) => {
+    const next = items.filter((_, i) => i !== idx);
+    onChange(next.join("|||"));
+  };
+
+  const readFiles = useCallback(
+    (files: FileList) => {
+      const imageFiles = Array.from(files).filter((f) =>
+        f.type.startsWith("image/")
+      );
+      const remaining = MAX_IMAGES - items.length;
+      const toRead = imageFiles.slice(0, remaining);
+
+      const promises = toRead.map(
+        (file) =>
+          new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result as string);
+            reader.readAsDataURL(file);
+          })
+      );
+
+      Promise.all(promises).then((dataUrls) => {
+        pushItems(dataUrls);
+        setUrlMode(false);
+      });
+    },
+    [items.length, pushItems]
   );
 
   const onDrop = useCallback(
     (e: React.DragEvent<HTMLDivElement>) => {
       e.preventDefault();
       setDragging(false);
-      const file = e.dataTransfer.files[0];
-      if (file) readFile(file);
+      if (e.dataTransfer.files.length) readFiles(e.dataTransfer.files);
     },
-    [readFile]
+    [readFiles]
   );
 
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) readFile(file);
+    if (e.target.files?.length) {
+      readFiles(e.target.files);
+      e.target.value = ""; // allow re-selecting same file
+    }
   };
 
   const onUrlSubmit = () => {
     const trimmed = urlInput.trim();
     if (trimmed) {
-      onChange(trimmed);
+      pushItems([trimmed]);
+      setUrlInput("");
       setUrlMode(false);
     }
   };
 
-  const isPreview = !!value;
+  const canAddMore = items.length < MAX_IMAGES;
 
   return (
     <div>
-      {!isPreview ? (
-        /* ── Drop Zone ── */
+      {/* ── Thumbnail grid (when at least one image is set) ── */}
+      {items.length > 0 && (
+        <div className="grid grid-cols-2 gap-2 mb-3">
+          {items.map((src, idx) => (
+            <div
+              key={idx}
+              className={cn(
+                "relative rounded-xl overflow-hidden",
+                "border border-emerald-200 dark:border-emerald-800",
+                "bg-black/5 dark:bg-black/20",
+                "shadow-[0_4px_12px_rgba(16,185,129,0.1)]"
+              )}
+            >
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img
+                src={src}
+                alt={`시간표 미리보기 ${idx + 1}`}
+                className="w-full h-28 object-contain"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent flex items-end px-2 py-1.5">
+                <p className="text-white text-[10px] font-semibold flex-1 truncate">
+                  {src.startsWith("data:") ? `✓ 이미지 ${idx + 1}` : src}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => removeItem(idx)}
+                  className="w-5 h-5 rounded-full bg-white/25 hover:bg-red-500/70 text-white text-[10px] flex items-center justify-center transition-colors ml-1"
+                  aria-label="이미지 제거"
+                >
+                  ✕
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ── Drop zone (shown when can add more) ── */}
+      {canAddMore && (
         <div
           role="button"
           tabIndex={0}
@@ -70,7 +143,8 @@ function ImageDropZone({ value, onChange }: DropZoneProps) {
           className={cn(
             "relative flex flex-col items-center justify-center",
             "rounded-2xl border-2 border-dashed cursor-pointer select-none",
-            "transition-all duration-300 min-h-[148px] px-4 py-6 text-center",
+            "transition-all duration-300 px-4 py-5 text-center",
+            items.length > 0 ? "min-h-[100px]" : "min-h-[148px]",
             "focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-400",
             dragging
               ? [
@@ -86,16 +160,13 @@ function ImageDropZone({ value, onChange }: DropZoneProps) {
                   "dark:hover:border-emerald-700 dark:hover:from-emerald-950/30 dark:hover:to-indigo-950/30",
                 ]
           )}
-          onDragOver={(e) => {
-            e.preventDefault();
-            setDragging(true);
-          }}
+          onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
           onDragLeave={() => setDragging(false)}
           onDrop={onDrop}
           onClick={() => fileRef.current?.click()}
           onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
         >
-          {/* Monet glow ring on drag */}
+          {/* Monet glow ring */}
           {dragging && (
             <div
               className="absolute inset-0 rounded-2xl pointer-events-none"
@@ -125,90 +196,48 @@ function ImageDropZone({ value, onChange }: DropZoneProps) {
             </div>
           )}
 
-          {/* Icon badge */}
+          {/* Icon */}
           <div
             className={cn(
-              "w-14 h-14 rounded-2xl flex items-center justify-center mb-3",
-              "transition-all duration-300 shadow-lg",
+              "w-12 h-12 rounded-2xl flex items-center justify-center mb-2.5",
+              "transition-all duration-300 shadow-md",
               dragging
                 ? "bg-gradient-to-br from-emerald-400 via-indigo-500 to-violet-600 scale-110 shadow-[0_8px_28px_rgba(16,185,129,0.5)]"
-                : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-700 dark:to-neutral-600 shadow-[0_4px_12px_rgba(0,0,0,0.06)]"
+                : "bg-gradient-to-br from-gray-100 to-gray-200 dark:from-neutral-700 dark:to-neutral-600"
             )}
           >
             <svg
-              className={cn(
-                "w-7 h-7 transition-colors duration-300",
-                dragging ? "text-white" : "text-gray-400 dark:text-gray-400"
-              )}
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
+              className={cn("w-6 h-6 transition-colors duration-300", dragging ? "text-white" : "text-gray-400")}
+              fill="none" stroke="currentColor" viewBox="0 0 24 24"
             >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={1.8}
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.8}
                 d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"
               />
             </svg>
           </div>
 
-          {/* Primary text */}
-          <p
-            className={cn(
-              "text-[15px] font-bold mb-1 transition-all duration-300",
-              dragging
-                ? "text-emerald-600 dark:text-emerald-300 scale-105"
-                : "text-gray-700 dark:text-gray-200"
-            )}
-          >
-            {dragging ? "놓으면 업로드됩니다!" : "시간표 이미지 드래그 또는 클릭"}
+          <p className={cn(
+            "text-[15px] font-bold mb-1 transition-all duration-300",
+            dragging ? "text-emerald-600 dark:text-emerald-300 scale-105" : "text-gray-700 dark:text-gray-200"
+          )}>
+            {dragging
+              ? "놓으면 업로드됩니다!"
+              : items.length > 0
+              ? `이미지 추가 (${items.length}/${MAX_IMAGES})`
+              : "시간표 이미지 드래그 또는 클릭"}
           </p>
           <p className="text-[12px] text-gray-400 dark:text-gray-500">
-            PNG · JPG · WEBP · 최대 10 MB
+            PNG · JPG · WEBP · 최대 {MAX_IMAGES}장까지 동시 분석
           </p>
 
           <input
             ref={fileRef}
             type="file"
             accept="image/*"
+            multiple
             className="hidden"
             onChange={onFileChange}
           />
-        </div>
-      ) : (
-        /* ── Preview ── */
-        <div
-          className={cn(
-            "relative rounded-2xl overflow-hidden",
-            "border border-emerald-200 dark:border-emerald-800",
-            "bg-black/5 dark:bg-black/30",
-            "shadow-[0_8px_24px_rgba(16,185,129,0.12)]"
-          )}
-        >
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={value}
-            alt="시간표 미리보기"
-            className="w-full max-h-52 object-contain"
-          />
-          {/* Gradient overlay */}
-          <div className="absolute inset-0 bg-gradient-to-t from-black/50 via-transparent to-transparent flex items-end p-3">
-            <p className="text-white text-xs font-semibold flex-1 truncate drop-shadow-sm">
-              {value.startsWith("data:") ? "✓ 업로드 완료" : value}
-            </p>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onChange("");
-              }}
-              className="ml-2 w-7 h-7 rounded-full bg-white/25 hover:bg-white/45 backdrop-blur-sm text-white text-sm flex items-center justify-center transition-colors font-bold"
-              aria-label="이미지 제거"
-            >
-              ✕
-            </button>
-          </div>
         </div>
       )}
 
@@ -230,35 +259,27 @@ function ImageDropZone({ value, onChange }: DropZoneProps) {
             onKeyDown={(e) => e.key === "Enter" && onUrlSubmit()}
             placeholder="https://example.com/timetable.png"
             className="flex-1 text-[15px] text-black placeholder:text-gray-400 bg-white border-gray-300 focus:border-emerald-400"
-            // eslint-disable-next-line jsx-a11y/no-autofocus
             autoFocus
           />
-          <Button
-            type="button"
-            size="sm"
-            onClick={onUrlSubmit}
-            className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold"
-          >
+          <Button type="button" size="sm" onClick={onUrlSubmit}
+            className="shrink-0 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl font-semibold">
             확인
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            variant="outline"
-            onClick={() => setUrlMode(false)}
-            className="shrink-0 rounded-xl text-black"
-          >
+          <Button type="button" size="sm" variant="outline"
+            onClick={() => setUrlMode(false)} className="shrink-0 rounded-xl text-black">
             취소
           </Button>
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => setUrlMode(true)}
-          className="w-full text-center text-[13px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold py-1 transition-colors"
-        >
-          URL로 입력하기 →
-        </button>
+        canAddMore && (
+          <button
+            type="button"
+            onClick={() => setUrlMode(true)}
+            className="w-full text-center text-[13px] text-indigo-500 dark:text-indigo-400 hover:text-indigo-700 dark:hover:text-indigo-300 font-semibold py-1 transition-colors"
+          >
+            URL로 입력하기 →
+          </button>
+        )
       )}
 
       {/* Keyframes */}

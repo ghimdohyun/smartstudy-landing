@@ -30,7 +30,9 @@ export const metadata: Metadata = {
     "Dream Helixion",
   ],
   icons: {
-    icon: "/favicon.ico",
+    icon: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
+    shortcut: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
+    apple: "https://i.ibb.co/5bWqhrj/Gemini-Generated-Image-3atp2y3atp2y3atp.png",
   },
   openGraph: {
     title: "Dream Helixion | AI 기반 서강대학교 수강신청 로드맵",
