@@ -1,5 +1,22 @@
 {
+<<<<<<< HEAD
   "enabledPlugins": {
     "bkit@bkit-marketplace": true
+=======
+  "permissions": {
+    "allow": [
+      "Bash(npx tsc --noEmit)",
+      "Bash(npm run build)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/api/study-plan)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code}\" --max-time 10 https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat)",
+      "Bash(curl -s -X POST https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat -H \"Content-Type: application/json\" -d '{\"\"message\"\":\"\"테스트\"\"}' --max-time 15 -w \"\\\\nHTTP_STATUS:%{http_code}\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{url_effective}\" -X POST \"https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat\" -H \"Content-Type: application/json\" -d '{\"\"message\"\":\"\"ping\"\"}' --max-time 15)",
+      "Bash(curl -s -I \"https://groq-chatbot-backend--ghimdohyun.replit.app/\" --max-time 10)",
+      "Bash(curl -s -o /dev/null -w \"STATUS:%{http_code} TIME:%{time_total}s\" -X POST \"https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat\" -H \"Content-Type: application/json\" -d '{\"\"message\"\":\"\"ping\"\"}' --max-time 20)",
+      "Bash(curl -sv \"https://groq-chatbot-backend--ghimdohyun.replit.app/\" --max-time 10)",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{time_total}s\\\\n\" -X POST \"https://groq-chatbot-backend--ghimdohyun.replit.app/api/chat\" -H \"Content-Type: application/json\" -d '{\"\"message\"\":\"\"ping\"\"}' --max-time 15)",
+      "Bash(curl -s -w \"\\\\n---STATUS:%{http_code}---\\\\n\" -X GET \"https://groq-chatbot-backend--ghimdohyun.replit.app/\" --max-time 10)"
+    ]
+>>>>>>> 2e194e20e0572af6ca579ea3b0937267e034ce0b
   }
 }
