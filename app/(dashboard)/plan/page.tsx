@@ -10,6 +10,7 @@ import YearPlanView from "@/components/YearPlanView";
 import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
+import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -148,7 +149,8 @@ function PlanPageSkeleton() {
 
 export default function PlanPage() {
   const [result, setResult] = useState<StudyPlanResult | null>(null);
-  const [hydrated, setHydrated] = useState(false);
+  // mounted=false → server renders only <PlanPageSkeleton />, zero hydration mismatch
+  const [mounted, setMounted] = useState(false);
   const [showUpgraded, setShowUpgraded] = useState(false);
   const [planView, setPlanView] = useState<"card" | "timetable">("card");
 
@@ -156,8 +158,10 @@ export default function PlanPage() {
     const stored = localStorage.getItem("smartstudy_result");
     if (stored) {
       try {
-        // preFormat sanitizes null/undefined fields before they reach renderers
-        setResult(preFormat(JSON.parse(stored)));
+        // 1) JSON.parse  2) preFormat (null→default)  3) Zod schema validation
+        const raw    = JSON.parse(stored);
+        const parsed = StudyPlanResultSchema.safeParse(preFormat(raw));
+        setResult(parsed.success ? (parsed.data as StudyPlanResult) : null);
       } catch {
         setResult(null);
       }
@@ -168,10 +172,11 @@ export default function PlanPage() {
       window.history.replaceState({}, "", "/plan");
     }
 
-    setHydrated(true);
+    setMounted(true);
   }, []);
 
-  if (!hydrated) return <PlanPageSkeleton />;
+  // Server send only skeleton — full content renders after client mount
+  if (!mounted) return <PlanPageSkeleton />;
 
   if (!result) {
     return (

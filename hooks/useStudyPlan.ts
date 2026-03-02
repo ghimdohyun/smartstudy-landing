@@ -4,6 +4,12 @@ import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import type { StudyPlanInput, StudyPlanResult } from '@/types';
 import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from '@/lib/api';
+import { StudyPlanResultSchema, isUsableResult } from '@/lib/validations/study-plan-result';
+
+// ─── Retry config ─────────────────────────────────────────────────────────────
+const MAX_RETRIES = 2;          // total extra attempts after first try
+const RETRY_DELAY_MS = 1800;    // wait between retries
+const delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
 // ─── Step-by-step loading messages ───────────────────────────────────────────
 
@@ -110,18 +116,6 @@ const CLIENT_DEMO: StudyPlanResult = {
   ],
 };
 
-/**
- * Validates that the AI response has the expected shape before rendering.
- * Returns false if plans/yearPlan are missing or obviously malformed.
- */
-function validateStructure(data: unknown): boolean {
-  if (!data || typeof data !== 'object') return false;
-  const d = data as Record<string, unknown>;
-  const hasPlans    = Array.isArray(d.plans) && d.plans.length > 0;
-  const hasYearPlan = d.yearPlan && typeof d.yearPlan === 'object';
-  return hasPlans || Boolean(hasYearPlan);
-}
-
 // ─── Hook ─────────────────────────────────────────────────────────────────────
 
 export function useStudyPlan() {
@@ -182,11 +176,47 @@ export function useStudyPlan() {
     setUpgradeDetail(null);
     setLoading(true);
 
+    // ── Zod-validated fetch with auto-retry ──────────────────────────────────
+    // Attempt up to MAX_RETRIES+1 times. On each attempt:
+    //   1. Fetch from API
+    //   2. Parse response with StudyPlanResultSchema (Zod)
+    //   3. Check structural usability (isUsableResult)
+    //   4. If invalid → wait RETRY_DELAY_MS then retry
+    // If all attempts exhaust → fall back to CLIENT_DEMO (no crash, no loop).
     try {
-      const raw = await fetchStudyPlan(enrichedInput);
-      // Guard: if AI returned an empty/malformed structure, replace with
-      // CLIENT_DEMO so the plan page renders safely with no runtime errors.
-      const data: StudyPlanResult = validateStructure(raw) ? raw : CLIENT_DEMO;
+      let data: StudyPlanResult = CLIENT_DEMO;
+      let succeeded = false;
+
+      for (let attempt = 1; attempt <= MAX_RETRIES + 1; attempt++) {
+        if (attempt > 1) {
+          setStatus(`AI 응답 검증 실패 — 재시도 중... (${attempt - 1}/${MAX_RETRIES})`);
+          await delay(RETRY_DELAY_MS);
+        }
+
+        try {
+          const resp = await fetchStudyPlan(enrichedInput);
+          const parsed = StudyPlanResultSchema.safeParse(resp);
+
+          if (parsed.success && isUsableResult(parsed.data)) {
+            data = parsed.data as StudyPlanResult;
+            succeeded = true;
+            break;
+          }
+          // Zod parse succeeded but result is structurally empty → retry
+        } catch (fetchErr: unknown) {
+          // UpgradeRequiredError must propagate immediately — no retry
+          if (fetchErr instanceof UpgradeRequiredError) throw fetchErr;
+          // Last attempt: re-throw so outer catch handles it
+          if (attempt === MAX_RETRIES + 1) throw fetchErr;
+          // Otherwise swallow and retry
+        }
+      }
+
+      if (!succeeded) {
+        // All retries exhausted — serve CLIENT_DEMO so the page renders safely
+        data = CLIENT_DEMO;
+      }
+
       setResult(data);
       setStatus('생성 완료! 플랜 페이지로 이동합니다...');
       if (typeof window !== 'undefined') {
@@ -195,7 +225,6 @@ export function useStudyPlan() {
       router.push('/plan');
     } catch (err: unknown) {
       if (err instanceof UpgradeRequiredError) {
-        // Open upgrade modal instead of a plain error message
         setUpgradeDetail(err.detail);
       } else {
         setError(normalizeError(err));
