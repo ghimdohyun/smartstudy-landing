@@ -91,6 +91,38 @@ const SOGANG_GENERAL: UniversityConfig = {
   notes: "예비수강신청 시 COR 과목 우선 선점 권장",
 };
 
+// ─── 경성대 교육학과 (평생교육사 자격증 이수 특화) ────────────────────────────
+
+const KYUNGSUNG_EDU: UniversityConfig = {
+  id: "kyungsung-edu",
+  name: "경성대학교",
+  department: "교육학과",
+  year: 2025,
+  courseCodeSystem: "AK 코드 — AK1xx: 교육학 기초 / AK2xx~3xx: 전공선택 / GE: 교양",
+  courseRules: [
+    // 평생교육사 2급 자격증 법정 필수 과목
+    { code: "AK213", name: "평생교육론",            action: "require", semesterHint: "2학년 1학기 필수 — 후속 과목 선수 조건" },
+    { code: "AK221", name: "평생교육방법론",         action: "require", semesterHint: "2~3학년 이수 권장" },
+    { code: "AK222", name: "평생교육경영론",         action: "require", semesterHint: "2~3학년 이수 권장" },
+    { code: "AK231", name: "평생교육프로그램개발론",  action: "require", semesterHint: "3학년 우선 이수" },
+    { code: "AK241", name: "평생교육실습",           action: "require", semesterHint: "4학년 2학기 — 현장실습 160시간 필수" },
+    { code: "AK211", name: "교육사회학",             action: "require", semesterHint: "2학년 전공필수" },
+    { code: "AK212", name: "교육심리학",             action: "require", semesterHint: "2학년 전공필수" },
+  ],
+  graduation: {
+    totalCredits: 130,
+    majorCredits: 45,
+    categories: [
+      { name: "전공필수 (교육학 기초)", code: "AK1xx", minCredits: 12 },
+      { name: "전공선택 (평생교육 트랙)", code: "AK2xx~AK3xx", minCredits: 33 },
+      { name: "평생교육사 법정 이수", minCredits: 30 },
+      { name: "교양", code: "GE", minCredits: 20 },
+    ],
+  },
+  timetable: { targetCredits: 18, preferOffDay: "금요일" },
+  notes: "평생교육사 2급: 법정 필수 5과목(AK213·221·222·231·241) 전부 이수 + 선택 5과목 이상. 4학년 2학기 실습(160h) Plan D에 편성 필수. AK213 미이수 시 후속 과목 수강 불가.",
+};
+
 const GENERIC: UniversityConfig = {
   id: "generic",
   name: "기타 대학교",
@@ -112,6 +144,7 @@ const GENERIC: UniversityConfig = {
 /** All pre-built university configurations */
 export const UNIVERSITY_PRESETS: UniversityConfig[] = [
   KYUNGSUNG_SW,
+  KYUNGSUNG_EDU,
   SOGANG_GENERAL,
   GENERIC,
 ];
@@ -131,6 +164,7 @@ export function getUniversityConfig(id?: string): UniversityConfig {
 /** Infers university ID from PDF filename or metadata string */
 export function detectUniversityFromFilename(filename: string): string {
   const s = filename.toLowerCase();
+  if (s.includes("교육학") || s.includes("ak213") || s.includes("평생교육")) return "kyungsung-edu";
   if (s.includes("경성") || s.includes("kyungsung") || s.includes("eo203")) return "kyungsung-sw";
   if (s.includes("서강") || s.includes("sogang") || s.includes("cor-")) return "sogang-general";
   return "generic";
