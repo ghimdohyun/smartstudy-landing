@@ -100,7 +100,8 @@ function normalizePlan(raw: RawPlan | undefined, label: string): StudyPlan | nul
 }
 
 export async function fetchStudyPlan(input: StudyPlanInput): Promise<StudyPlanResult> {
-  const res = await fetch('/api/study-plan', {
+  // ?_t= timestamp busts any edge/proxy cache that ignores Cache-Control headers
+  const res = await fetch(`/api/study-plan?_t=${Date.now()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
