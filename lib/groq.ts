@@ -4,6 +4,7 @@
 
 import Groq from "groq-sdk";
 import { buildPlanPromptRules, getUniversityConfig } from "@/lib/university-kb";
+import { stripCjkNoise } from "@/lib/planner-logic";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -43,36 +44,43 @@ export function buildPrompt(studentInfo: string, timetableInfo: string, universi
     : `5. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`;
 
   return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
+[REQUIRED_STRICT MODE — 아래 모든 원칙은 협상 불가, 위반 시 응답 전체 무효]
+
+══════════════════════════════════════════════════════════════
+【학생 맞춤 최우선 필터 — 모든 과목 추천의 절대적 기준】
+${studentInfo}
+→ 위 학생의 관심 분야·진로·수강 조건에 부합하지 않는 과목 추천 금지.
+→ 학생 정보가 반영되지 않은 계획은 INVALID로 간주한다.
+══════════════════════════════════════════════════════════════
 
 ## 역할 선언
-너는 대학 수강신청 전문가이다. 제공된 편람 데이터를 기반으로 전공(소프트웨어 계열)과 교양 필수 과목을 최우선으로 배치하라.
+너는 대학 수강신청 전문가이다. 위 학생 맞춤 정보를 최우선으로 반영하여 편람 데이터 기반 전공과 교양 필수 과목을 배치하라.
 
-## 강제 출력 원칙 (위반 불가)
-1. Plan A~D는 반드시 서로 다른 테마를 가져야 한다 (동일 구성 절대 불가):
-   - Plan A (안정): 이수 부담 최소, 공강 확보 전략
-   - Plan B (도전): 전공심화 극대화 전략
-   - Plan C (꿀강): GPA 최적화, 강의평가 우수 과목 중심
-   - Plan D (전공집중): 졸업요건 최적화 전략
-2. courses[].day: 반드시 한글 요일로 정확히 기입 (예: "월수금", "화목")
-   courses[].time: 반드시 교시 또는 시간으로 기입 (예: "1교시", "09:00")
-3. 깨진 텍스트(비표준 문자 포함 출력)를 절대 금지하고 표준 한국어만 사용하라
-4. 과목명·학수번호는 편람에 실제 존재하는 것만 사용하라
+## ⚠ REQUIRED_STRICT 출력 원칙 (단 하나의 위반도 허용 불가)
+1. [CRITICAL] planA, planB, planC, planD 4개 키를 **모두** 반환하라. 누락 시 응답 전체 무효.
+2. [CRITICAL] 각 Plan은 반드시 서로 다른 전략 테마를 가져야 한다 (동일·유사 구성 절대 불가):
+   - Plan A (안정): 이수 부담 최소, 공강 확보 전략 — 학점 부담 낮은 과목 중심
+   - Plan B (도전): 전공심화 극대화 — 어렵지만 가치 있는 심화과목 포함
+   - Plan C (꿀강): GPA 최적화 — 강의평가 우수, A+ 가능성 높은 과목 집중
+   - Plan D (전공집중): 졸업요건 최적화 — 전공필수·전공선택 집중 배치
+3. [CRITICAL] courses[].day: 반드시 한글 요일로 기입 (예: "월수금", "화목", "월")
+   courses[].time: 반드시 교시 또는 시각으로 기입 (예: "1교시", "09:00", "10:30")
+4. [CRITICAL] 깨진 텍스트·한자·중국어·비표준 유니코드 출력 절대 금지 → 순수 한국어만
+5. [CRITICAL] 과목명·학수번호는 실제 편람에 존재하는 것만 사용 (임의 생성 불가)
+6. courses 필드 순서: code, name, credits, requirement, target, day, time (모두 필수)
 
-제공된 [시간표 이미지], [학생 정보], [지침서 설명]을 융합 분석하여 아래 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
-
-## 학생 정보
-${studentInfo}
+제공된 [시간표 이미지], [지침서 설명]을 융합 분석하여 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
 
 ## 시간표 / 지침서
 ${timetableInfo || "없음"}
 
 ${universityRules}
 
-## 4가지 수강 전략
-- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화. ${tc}학점.
-- Plan B (도전): 전공심화 + 난이도 높은 과목 포함, 성장 극대화. ${tc}학점.
+## 4가지 수강 전략 (각 플랜은 서로 다른 과목 조합으로 구성)
+- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화, 공강일 최대 확보. ${tc}학점.
+- Plan B (도전): 전공심화 + 고난이도 과목 포함, 역량 극대화. ${tc}학점.
 - Plan C (꿀강): 강의평가 우수 과목 중심, GPA 극대화. ${tc}학점.
-- Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최적화. ${tc}학점.
+- Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최단 경로 최적화. ${tc}학점.
 
 ## 공통 지시 사항
 1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
@@ -81,7 +89,7 @@ ${universityRules}
 4. courses 각 항목: code, name, credits, requirement, target, day, time 필수
 ${dayNote}
 
-반환 구조:
+반환 구조 (planA~planD 4개 모두 필수 — 누락 불가):
 {
   "planA": { "title": "안정 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
   "planB": { "title": "도전 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
@@ -431,11 +439,54 @@ export interface StudyPlanCallParams {
  * 2. GROQ_API_KEY, no image  -> llama-3.3-70b-versatile (text)
  * 3. No key                  -> Replit proxy + DEMO_PLAN fallback
  */
-/** Validate AI result has at least one plan — prevents Empty Plan crash downstream */
+/**
+ * Validate AI result has all 4 plans (REQUIRED_STRICT).
+ * Falls back to accepting any single plan key if the AI partially responded.
+ */
 function isValidPlanResult(result: unknown): boolean {
   if (!result || typeof result !== "object") return false;
   const r = result as Record<string, unknown>;
-  return Boolean(r.planA || r.planB || r.plans);
+  // Full 4-plan result (ideal)
+  if (r.planA && r.planB && r.planC && r.planD) return true;
+  // Partial result — at least one plan present (repair downstream)
+  return Boolean(r.planA || r.planB || r.planC || r.planD || r.plans);
+}
+
+/**
+ * Ensure result always has all 4 plan keys.
+ * If the AI omitted planC or planD, fill them from DEMO_PLAN as labeled placeholders.
+ * This guarantees the /plan page always renders exactly 4 cards.
+ */
+function ensureFourPlans(result: Record<string, unknown>): Record<string, unknown> {
+  const keys = ["planA", "planB", "planC", "planD"] as const;
+  const fallbacks: Record<string, unknown> = {
+    planA: DEMO_PLAN.planA,
+    planB: DEMO_PLAN.planB,
+    planC: DEMO_PLAN.planC,
+    planD: DEMO_PLAN.planD,
+  };
+  const out = { ...result };
+  for (const key of keys) {
+    if (!out[key] || typeof out[key] !== "object") {
+      out[key] = fallbacks[key];
+      console.warn(`[ensureFourPlans] ${key} missing from AI response — using demo fallback`);
+    }
+  }
+  return out;
+}
+
+/** Recursively strip CJK noise from all string fields in an API response object. */
+function denoiseResult(val: unknown): unknown {
+  if (typeof val === "string") return stripCjkNoise(val);
+  if (Array.isArray(val)) return val.map(denoiseResult);
+  if (val && typeof val === "object") {
+    const out: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(val as Record<string, unknown>)) {
+      out[k] = denoiseResult(v);
+    }
+    return out;
+  }
+  return val;
 }
 
 export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unknown> {
@@ -452,12 +503,15 @@ export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unk
         console.warn("[callStudyPlanApi] AI returned empty or invalid plan — using DEMO_PLAN fallback");
         return { ...DEMO_PLAN, _isDemo: true };
       }
-      return result;
+      // Guarantee all 4 plan keys exist before returning (REQUIRED_STRICT repair)
+      const repaired = ensureFourPlans(result as Record<string, unknown>);
+      return denoiseResult(repaired);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new UpstreamError(500, `Groq API 오류: ${msg}`);
     }
   }
 
-  return callReplitUpstream(studentInfo, timetableInfo, imageUrl, universityId);
+  const upstream = await callReplitUpstream(studentInfo, timetableInfo, imageUrl, universityId);
+  return denoiseResult(upstream);
 }
