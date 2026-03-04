@@ -44,7 +44,16 @@ function classifyError(msg: string): keyof typeof ERROR_REASONS {
   return "default";
 }
 
+const AUTO_CLOSE_MS = 8_000; // auto-dismiss after 8 s if the user doesn't act
+
 export default function ApiErrorModal({ open, message, onClose, onRetry }: Props) {
+  // Auto-dismiss timer
+  useEffect(() => {
+    if (!open) return;
+    const id = setTimeout(onClose, AUTO_CLOSE_MS);
+    return () => clearTimeout(id);
+  }, [open, onClose]);
+
   // Close on Escape
   useEffect(() => {
     if (!open) return;

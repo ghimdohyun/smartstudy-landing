@@ -11,6 +11,7 @@ import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
 import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
+import { RESULT_DATA_VERSION } from "@/hooks/useStudyPlan";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -158,11 +159,28 @@ export default function PlanPage() {
     const stored = localStorage.getItem("smartstudy_result");
     if (stored) {
       try {
-        // 1) JSON.parse  2) preFormat (null→default)  3) Zod schema validation
-        const raw    = JSON.parse(stored);
+        const raw = JSON.parse(stored) as Record<string, unknown>;
+
+        // ── Stale data guard ────────────────────────────────────────────────
+        // If _v field is missing or doesn't match the current version, the
+        // data was written by an older API structure. Clear it silently —
+        // the user will see the "go generate" screen instead of a crash.
+        if (raw._v !== RESULT_DATA_VERSION) {
+          localStorage.removeItem("smartstudy_result");
+          // Also clear old-format PDF cache entries (ss_pdf_*)
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith("ss_pdf_"))
+            .forEach((k) => localStorage.removeItem(k));
+          setResult(null);
+          setMounted(true);
+          return;
+        }
+
+        // 1) preFormat (null→default)  2) Zod schema validation
         const parsed = StudyPlanResultSchema.safeParse(preFormat(raw));
         setResult(parsed.success ? (parsed.data as StudyPlanResult) : null);
       } catch {
+        localStorage.removeItem("smartstudy_result");
         setResult(null);
       }
     }

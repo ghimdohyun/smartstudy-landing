@@ -8,7 +8,7 @@ import dynamic from 'next/dynamic';
 import UpgradeModal from '@/components/UpgradeModal';
 import ApiErrorModal from '@/components/ApiErrorModal';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useStudyPlan } from '@/hooks/useStudyPlan';
+import { useStudyPlan, RESULT_DATA_VERSION } from '@/hooks/useStudyPlan';
 
 // SSR:false — StudyPlanForm uses FileReader, DnD, and pdf.js browser APIs that
 // do not exist in Node.js; prevents "window is not defined" hydration crashes.
@@ -226,6 +226,25 @@ export default function ServiceSection() {
 
   useEffect(() => {
     setMounted(true);
+
+    // ── Stale result guard ──────────────────────────────────────────────────
+    // If smartstudy_result has no _v tag or a different version, it was written
+    // by an old API structure. Clear it now so the plan page never crashes.
+    try {
+      const raw = localStorage.getItem('smartstudy_result');
+      if (raw) {
+        const parsed = JSON.parse(raw) as Record<string, unknown>;
+        if (parsed._v !== RESULT_DATA_VERSION) {
+          localStorage.removeItem('smartstudy_result');
+          Object.keys(localStorage)
+            .filter((k) => k.startsWith('ss_pdf_'))
+            .forEach((k) => localStorage.removeItem(k));
+        }
+      }
+    } catch {
+      localStorage.removeItem('smartstudy_result');
+    }
+
     // Default to generic config (remove any stale university-specific value)
     const stored = localStorage.getItem('smartstudy_university');
     if (!stored || stored === 'kyungsung-sw' || stored === 'sogang-general') {

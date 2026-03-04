@@ -6,6 +6,10 @@ import type { StudyPlanInput, StudyPlanResult } from '@/types';
 import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from '@/lib/api';
 import { StudyPlanResultSchema, isUsableResult } from '@/lib/validations/study-plan-result';
 
+// ─── Data versioning ──────────────────────────────────────────────────────────
+// Bump whenever the stored shape changes incompatibly with the current reader.
+export const RESULT_DATA_VERSION = "v1";
+
 // ─── Retry config ─────────────────────────────────────────────────────────────
 const MAX_RETRIES = 2;          // total extra attempts after first try
 const RETRY_DELAY_MS = 1800;    // wait between retries
@@ -220,7 +224,7 @@ export function useStudyPlan() {
       setResult(data);
       setStatus('생성 완료! 플랜 페이지로 이동합니다...');
       if (typeof window !== 'undefined') {
-        localStorage.setItem('smartstudy_result', JSON.stringify(data));
+        localStorage.setItem('smartstudy_result', JSON.stringify({ ...data, _v: RESULT_DATA_VERSION }));
       }
       router.push('/plan');
     } catch (err: unknown) {
