@@ -1,13 +1,13 @@
 // /plan page — glassmorphism dark mode, forced black text, Tailwind-based layout
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { StudyPlanResult } from "@/types";
 import PlanCard from "@/components/PlanCard";
 import YearPlanView from "@/components/YearPlanView";
-import { downloadJSON, downloadCSV } from "@/lib/exportUtils";
+import { downloadJSON, downloadCSV, downloadAllPdf } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
 import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
@@ -154,6 +154,11 @@ export default function PlanPage() {
   const [mounted, setMounted] = useState(false);
   const [showUpgraded, setShowUpgraded] = useState(false);
   const [planView, setPlanView] = useState<"card" | "timetable">("card");
+  /** 0-based index of the currently active Plan tab (A=0 B=1 C=2 D=3) */
+  const [activePlanIdx, setActivePlanIdx] = useState(0);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  /** Ref for the capturable plan content area (card + timetable) */
+  const planContentRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("smartstudy_result");
@@ -213,6 +218,26 @@ export default function PlanPage() {
   }
 
   const hasPlans = (result.plans ?? []).length > 0;
+  const plans    = result.plans ?? [];
+  const activePlan = plans[activePlanIdx] ?? plans[0];
+
+  const PLAN_META = [
+    { accent: "#3b82f6" },
+    { accent: "#10b981" },
+    { accent: "#a855f7" },
+    { accent: "#f97316" },
+  ];
+
+  const handlePdfDownload = async () => {
+    if (!planContentRef.current || pdfLoading) return;
+    setPdfLoading(true);
+    try {
+      const label = activePlan?.label ?? `Plan ${String.fromCharCode(65 + activePlanIdx)}`;
+      await downloadAllPdf([planContentRef.current], `smartstudy-${label.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+    } finally {
+      setPdfLoading(false);
+    }
+  };
 
   return (
     <main className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60">
@@ -279,14 +304,37 @@ export default function PlanPage() {
           </div>
         </div>
 
-        {/* Plan A~D — card or timetable view */}
+        {/* Plan A~D — tabbed single-plan view */}
         {hasPlans && (
           <section className="mb-2">
-            <div className="flex items-center justify-between mb-3.5 flex-wrap gap-2">
-              <h2 className="text-lg font-bold text-black dark:text-white m-0">
-                수강 계획 4안
-              </h2>
-              {/* View toggle */}
+
+            {/* ── Plan tabs ─────────────────────────────────────────────── */}
+            <div className="flex gap-0 mb-0 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+              {plans.map((plan, i) => {
+                const accent = PLAN_META[i % PLAN_META.length].accent;
+                const isActive = i === activePlanIdx;
+                return (
+                  <button
+                    key={i}
+                    type="button"
+                    onClick={() => { setActivePlanIdx(i); setPlanView("card"); }}
+                    className="px-5 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all rounded-t-lg border-b-2 -mb-px"
+                    style={isActive
+                      ? { color: accent, borderColor: accent, background: `${accent}08` }
+                      : { color: "#94a3b8", borderColor: "transparent" }
+                    }
+                  >
+                    {plan.label ?? `Plan ${String.fromCharCode(65 + i)}`}
+                    {plan.totalCredits !== undefined && (
+                      <span className="ml-1.5 text-[11px] font-normal opacity-60">{plan.totalCredits}학점</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* ── Toolbar: view toggle + PDF export ─────────────────────── */}
+            <div className="flex items-center justify-between py-3 flex-wrap gap-2">
               <div className="flex rounded-lg border border-slate-200 dark:border-slate-700
                               overflow-hidden text-[12px] font-semibold bg-white dark:bg-slate-900">
                 {(["card", "timetable"] as const).map((v) => (
@@ -302,17 +350,35 @@ export default function PlanPage() {
                   </button>
                 ))}
               </div>
+
+              <button
+                type="button"
+                onClick={handlePdfDownload}
+                disabled={pdfLoading}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[12px] font-semibold transition-all
+                           bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700
+                           text-slate-600 dark:text-slate-300
+                           hover:bg-slate-50 dark:hover:bg-slate-800
+                           disabled:opacity-50 disabled:cursor-not-allowed
+                           shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
+              >
+                {pdfLoading ? "생성 중..." : "📄 PDF 다운로드"}
+              </button>
             </div>
 
-            {planView === "card" ? (
-              <div className="flex flex-wrap gap-4">
-                {result.plans!.map((plan, i) => (
-                  <PlanCard key={i} plan={plan} index={i} />
-                ))}
-              </div>
-            ) : (
-              <TimetableGrid plans={result.plans!} />
-            )}
+            {/* ── Active plan content (capturable via ref) ───────────────── */}
+            <div ref={planContentRef}>
+              {planView === "card" ? (
+                activePlan && <PlanCard plan={activePlan} index={activePlanIdx} />
+              ) : (
+                activePlan && (
+                  <TimetableGrid
+                    plans={[activePlan]}
+                    colorOffset={activePlanIdx}
+                  />
+                )
+              )}
+            </div>
           </section>
         )}
 

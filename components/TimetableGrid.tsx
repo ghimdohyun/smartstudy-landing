@@ -85,9 +85,12 @@ interface CourseBlock {
 
 interface Props {
   plans: StudyPlan[];
+  /** When rendering a single plan, pass the plan's original index (0–3)
+   *  so it receives the correct colour instead of always defaulting to blue. */
+  colorOffset?: number;
 }
 
-export default function TimetableGrid({ plans }: Props) {
+export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
 
   // Build grid: day → sorted array of CourseBlock
@@ -143,7 +146,7 @@ export default function TimetableGrid({ plans }: Props) {
       {/* Legend */}
       <div className="flex flex-wrap gap-2 mb-4">
         {(plans ?? []).map((plan, i) => {
-          const c = PLAN_COLORS[i % PLAN_COLORS.length];
+          const c = PLAN_COLORS[(i + colorOffset) % PLAN_COLORS.length];
           return (
             <span key={i} className={cn(
               "inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border",
@@ -217,7 +220,7 @@ export default function TimetableGrid({ plans }: Props) {
                         return (
                           <td key={d} className="px-1 py-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0" style={{ height: 52 }}>
                             {items.map((item, j) => {
-                              const c = PLAN_COLORS[item.planIdx % PLAN_COLORS.length];
+                              const c = PLAN_COLORS[(item.planIdx + colorOffset) % PLAN_COLORS.length];
                               return (
                                 <div key={j} className={cn(
                                   "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center",
