@@ -162,7 +162,7 @@ function ImageDropZone({ value, onChange }: ImageDropZoneProps) {
 // Architecture: pdfjs-dist runs IN THE BROWSER.
 //   1. Extract text page-by-page (shows progress)
 //   2. Filter only curriculum-relevant pages (keyword match)
-//   3. POST only the tiny filtered text to /api/pdf-extract
+//   3. POST only the tiny filtered text to /api/v1?type=pdf
 //   → Server receives ~KB of text instead of MB of binary → 413 impossible
 
 const CURRICULUM_KEYWORDS = [
@@ -273,7 +273,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
           "파일 내 특수문자가 너무 많습니다. 텍스트로 복사해서 입력해주세요.",
         );
       }
-      const res = await fetch("/api/pdf-extract", {
+      const res = await fetch("/api/v1?type=pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
