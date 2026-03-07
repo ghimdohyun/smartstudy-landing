@@ -90,9 +90,12 @@ interface CourseBlock {
 
 interface Props {
   plans: StudyPlan[];
+  /** When rendering a single plan, pass its original 0-based index so it
+   *  receives the correct colour instead of always defaulting to blue. */
+  colorOffset?: number;
 }
 
-export default function TimetableGrid({ plans }: Props) {
+export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
   const gridRef    = useRef<HTMLDivElement>(null);
   // -1 = "전체 비교" overlay; 0~3 = individual plan tab
   const [activePlan, setActivePlan] = useState<number>(0);
@@ -116,7 +119,7 @@ export default function TimetableGrid({ plans }: Props) {
         const periodIdx = safeParseTime(c?.time);
         days.forEach((d) => {
           g[d].push({
-            planIdx:  activePlan === -1 ? pi : activePlan,
+            planIdx:  activePlan === -1 ? pi : activePlan + colorOffset,
             name:     c?.name ?? "과목명 없음",
             credits:  c?.credits,
             req:      c?.requirement,
