@@ -1,12 +1,15 @@
 // TimetableGrid — weekly colour-block visualisation of Plan A~D courses
+// v2: per-plan tab selector + retake course highlighting + score badge
 // Parses course.day (e.g., "월,수,금" or "화목") and course.time (e.g., "3교시", "09:00").
 // Displays colour blocks per column with a time axis (1~9교시) on the left.
+// Courses without schedule → virtual time injection via generateVirtualTimes().
 // PNG download via html2canvas.
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import type { StudyPlan } from "@/types";
 import { cn } from "@/lib/utils";
+import { generateVirtualTimes } from "@/lib/planner-logic";
 
 const DAYS = ["월", "화", "수", "목", "금"] as const;
 type Day = (typeof DAYS)[number];
@@ -81,95 +84,116 @@ interface CourseBlock {
   credits?: number;
   req?: string;
   periodIdx: number | null; // null = no time info, stack from top
+  virtual?: boolean;        // true = synthetic time assigned by generateVirtualTimes
+  retake?: boolean;         // true = 재수강 — highlighted with rose left-border
 }
 
 interface Props {
   plans: StudyPlan[];
-  /** When rendering a single plan, pass the plan's original index (0–3)
-   *  so it receives the correct colour instead of always defaulting to blue. */
-  colorOffset?: number;
 }
 
-export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
-  const gridRef = useRef<HTMLDivElement>(null);
+export default function TimetableGrid({ plans }: Props) {
+  const gridRef    = useRef<HTMLDivElement>(null);
+  // -1 = "전체 비교" overlay; 0~3 = individual plan tab
+  const [activePlan, setActivePlan] = useState<number>(0);
 
-  // Build grid: day → sorted array of CourseBlock
-  const grid: Record<Day, CourseBlock[]> = {
-    월: [], 화: [], 수: [], 목: [], 금: [],
-  };
+  const safePlans    = plans ?? [];
+  const displayPlans = activePlan === -1 ? safePlans : safePlans.slice(activePlan, activePlan + 1);
+  const activePlanObj = safePlans[activePlan] as (StudyPlan & { score?: number }) | undefined;
+  const planScore = activePlanObj?.score;
 
-  (plans ?? []).forEach((plan, pi) => {
-    (plan?.courses ?? []).forEach((c) => {
-      const days = safeParseDay(c?.day);
-      if (days.length === 0) return;
-      const periodIdx = safeParseTime(c?.time);
-      days.forEach((d) => {
-        grid[d].push({
-          planIdx: pi,
-          name: c?.name ?? "과목명 없음",
-          credits: c?.credits,
-          req: c?.requirement,
-          periodIdx,
+  function buildGrid(source: StudyPlan[]): Record<Day, CourseBlock[]> {
+    const g: Record<Day, CourseBlock[]> = { 월: [], 화: [], 수: [], 목: [], 금: [] };
+    source.forEach((plan, pi) => {
+      const rawCourses = plan?.courses ?? [];
+      const augmented  = generateVirtualTimes(rawCourses, "금");
+      augmented.forEach((c) => {
+        const isVirtual = (c as { _virtual?: boolean })._virtual === true;
+        const isRetake  = !!(c as { retake?: boolean }).retake ||
+                          (typeof c.note === "string" && c.note.includes("재수강"));
+        const days = safeParseDay(c?.day);
+        if (days.length === 0) return;
+        const periodIdx = safeParseTime(c?.time);
+        days.forEach((d) => {
+          g[d].push({
+            planIdx:  activePlan === -1 ? pi : activePlan,
+            name:     c?.name ?? "과목명 없음",
+            credits:  c?.credits,
+            req:      c?.requirement,
+            periodIdx,
+            virtual:  isVirtual,
+            retake:   isRetake,
+          });
         });
       });
     });
-  });
-
-  // Sort each column: blocks with period first (ascending), then without
-  for (const day of DAYS) {
-    grid[day].sort((a, b) => {
-      if (a.periodIdx !== null && b.periodIdx !== null) return a.periodIdx - b.periodIdx;
-      if (a.periodIdx !== null) return -1;
-      if (b.periodIdx !== null) return 1;
-      return 0;
-    });
+    for (const day of DAYS) {
+      g[day].sort((a, b) => {
+        if (a.periodIdx !== null && b.periodIdx !== null) return a.periodIdx - b.periodIdx;
+        if (a.periodIdx !== null) return -1;
+        if (b.periodIdx !== null) return 1;
+        return 0;
+      });
+    }
+    return g;
   }
 
+  const grid       = buildGrid(displayPlans);
   const hasAnyData = Object.values(grid).some((col) => col.length > 0);
 
   const downloadPng = async () => {
     if (!gridRef.current) return;
     const { default: html2canvas } = await import("html2canvas");
-    const canvas = await html2canvas(gridRef.current, {
-      scale: 2,
-      backgroundColor: "#ffffff",
-      useCORS: true,
-    });
+    const canvas = await html2canvas(gridRef.current, { scale: 2, backgroundColor: "#ffffff", useCORS: true });
     const link = document.createElement("a");
-    link.download = "timetable.png";
+    link.download = `timetable-${activePlan === -1 ? "all" : (activePlanObj?.label ?? `plan${activePlan + 1}`)}.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
   };
 
   return (
     <div className="mt-2">
-      {/* Legend */}
-      <div className="flex flex-wrap gap-2 mb-4">
-        {(plans ?? []).map((plan, i) => {
-          const c = PLAN_COLORS[(i + colorOffset) % PLAN_COLORS.length];
+      {/* ── Plan tab selector ─────────────────────────────────────── */}
+      <div className="flex flex-wrap items-center gap-2 mb-4">
+        {safePlans.map((plan, i) => {
+          const c      = PLAN_COLORS[i % PLAN_COLORS.length];
+          const active = activePlan === i;
           return (
-            <span key={i} className={cn(
-              "inline-flex items-center gap-1.5 text-[11px] font-semibold px-2.5 py-1 rounded-full border",
-              c.bg, c.text, c.border,
-            )}>
-              <span className="w-2 h-2 rounded-full"
-                style={{ background: "currentColor" }} />
+            <button key={i} type="button" onClick={() => setActivePlan(i)}
+              className={cn(
+                "inline-flex items-center gap-1.5 text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all",
+                active
+                  ? cn(c.bg, c.text, c.border, "shadow-[0_2px_8px_rgba(0,0,0,0.1)]")
+                  : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600",
+              )}>
+              <span className={cn("w-2 h-2 rounded-full shrink-0")}
+                style={{ background: active ? "currentColor" : undefined }} />
               {plan?.label ?? c.label}
               {plan?.totalCredits !== undefined && (
                 <span className="opacity-70 font-normal">{plan.totalCredits}학점</span>
               )}
-            </span>
+              {active && planScore !== undefined && (
+                <span className="ml-1 opacity-60 font-normal">· {planScore}점</span>
+              )}
+            </button>
           );
         })}
+        <button type="button" onClick={() => setActivePlan(-1)}
+          className={cn(
+            "text-[11px] font-semibold px-3 py-1.5 rounded-full border transition-all",
+            activePlan === -1
+              ? "bg-slate-800 dark:bg-slate-200 text-white dark:text-slate-900 border-slate-800 dark:border-slate-200"
+              : "bg-white dark:bg-slate-900 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:border-slate-300",
+          )}>
+          전체 비교
+        </button>
       </div>
 
       {hasAnyData ? (
         <>
-          {/* Capturable grid */}
           <div ref={gridRef}
             className="overflow-x-auto rounded-2xl border border-slate-200 dark:border-slate-700
                         bg-white dark:bg-slate-900 shadow-[0_2px_12px_rgba(15,23,42,0.06)]">
-            {/* table-fixed + explicit colgroup prevents time-axis column from collapsing */}
             <table className="w-full border-collapse table-fixed" style={{ minWidth: 560 }}>
               <colgroup>
                 <col style={{ width: 72 }} />
@@ -177,10 +201,8 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
               </colgroup>
               <thead>
                 <tr>
-                  {/* Time axis header cell — fixed width, never clips */}
                   <th className="py-2.5 px-1.5 text-[11px] font-bold text-center text-slate-400 dark:text-slate-400
-                                  border-b border-slate-200 dark:border-slate-700
-                                  bg-slate-50 dark:bg-slate-800/50"
+                                  border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800/50"
                       style={{ width: 72, minWidth: 72 }}>
                     교시
                   </th>
@@ -195,69 +217,66 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {PERIODS.map((period, pIdx) => {
-                  // For each period row, find the first course in each day at this period
-                  // If course has periodIdx, render in that row; if null, assign to first unfilled row
-                  return (
-                    <tr key={pIdx} className="align-top border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
-                      {/* Time label — matches fixed 72px column width */}
-                      <td className="px-1.5 py-1.5 text-center border-r border-slate-100 dark:border-slate-800
-                                     bg-slate-50/60 dark:bg-slate-800/30"
-                          style={{ width: 72, minWidth: 72 }}>
-                        <div className="flex flex-col items-center">
-                          <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight whitespace-nowrap">{period.label}</span>
-                          <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">{period.time}</span>
-                        </div>
-                      </td>
-                      {DAYS.map((d) => {
-                        // Find courses explicitly assigned to this period
-                        const explicit = grid[d].filter((b) => b.periodIdx === pIdx);
-                        // For rows without time: assign the pIdx-th zero-periodIdx course to this row
-                        const unscheduled = grid[d].filter((b) => b.periodIdx === null);
-                        const implicit = unscheduled[pIdx] ? [unscheduled[pIdx]] : [];
-                        const items = explicit.length > 0 ? explicit : implicit;
-
-                        return (
-                          <td key={d} className="px-1 py-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0" style={{ height: 52 }}>
-                            {items.map((item, j) => {
-                              const c = PLAN_COLORS[(item.planIdx + colorOffset) % PLAN_COLORS.length];
-                              return (
-                                <div key={j} className={cn(
-                                  "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center",
-                                  c.bg, c.text, c.border,
-                                )}>
-                                  <p className="m-0 font-semibold truncate">{item.name}</p>
-                                  <div className="flex items-center gap-1 mt-0.5 flex-wrap">
-                                    {item.credits !== undefined && (
-                                      <span className="opacity-70">{item.credits}학점</span>
-                                    )}
-                                    {item.req && (
-                                      <span className="opacity-60 text-[9px]">· {item.req}</span>
-                                    )}
-                                  </div>
+                {PERIODS.map((period, pIdx) => (
+                  <tr key={pIdx} className="align-top border-b border-slate-50 dark:border-slate-800/60 last:border-b-0">
+                    <td className="px-1.5 py-1.5 text-center border-r border-slate-100 dark:border-slate-800
+                                   bg-slate-50/60 dark:bg-slate-800/30"
+                        style={{ width: 72, minWidth: 72 }}>
+                      <div className="flex flex-col items-center">
+                        <span className="text-[10px] font-semibold text-slate-600 dark:text-slate-300 leading-tight whitespace-nowrap">
+                          {period.label}
+                        </span>
+                        <span className="text-[9px] text-slate-400 dark:text-slate-500 leading-tight">{period.time}</span>
+                      </div>
+                    </td>
+                    {DAYS.map((d) => {
+                      const explicit    = grid[d].filter((b) => b.periodIdx === pIdx);
+                      const unscheduled = grid[d].filter((b) => b.periodIdx === null);
+                      const implicit    = unscheduled[pIdx] ? [unscheduled[pIdx]] : [];
+                      const items       = explicit.length > 0 ? explicit : implicit;
+                      return (
+                        <td key={d} className="px-1 py-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0"
+                            style={{ height: 52 }}>
+                          {items.map((item, j) => {
+                            const c = PLAN_COLORS[item.planIdx % PLAN_COLORS.length];
+                            return (
+                              <div key={j} className={cn(
+                                "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center relative",
+                                c.bg, c.text, c.border,
+                                item.virtual && "opacity-60 border-dashed",
+                                item.retake  && "border-l-[3px] border-l-rose-500 dark:border-l-rose-400",
+                              )}>
+                                {item.retake && (
+                                  <span className="absolute top-0.5 right-0.5 text-[8px] font-bold text-rose-500 dark:text-rose-400 leading-none">
+                                    재수강
+                                  </span>
+                                )}
+                                <p className="m-0 font-semibold truncate">
+                                  {item.name}
+                                  {item.virtual && <span className="ml-1 font-normal opacity-60">(가상)</span>}
+                                </p>
+                                <div className="flex items-center gap-1 mt-0.5 flex-wrap">
+                                  {item.credits !== undefined && <span className="opacity-70">{item.credits}학점</span>}
+                                  {item.req && <span className="opacity-60 text-[9px]">· {item.req}</span>}
                                 </div>
-                              );
-                            })}
-                          </td>
-                        );
-                      })}
-                    </tr>
-                  );
-                })}
+                              </div>
+                            );
+                          })}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
 
-          {/* PNG download button */}
           <div className="flex justify-end mt-2.5">
-            <button
-              type="button"
-              onClick={downloadPng}
+            <button type="button" onClick={downloadPng}
               className="flex items-center gap-1.5 px-3.5 py-2 rounded-full border border-slate-200 dark:border-slate-700
                          bg-white dark:bg-slate-900 text-[12px] font-semibold text-slate-600 dark:text-slate-300
                          hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-800 dark:hover:text-white
-                         shadow-[0_1px_4px_rgba(15,23,42,0.06)] transition-all"
-            >
+                         shadow-[0_1px_4px_rgba(15,23,42,0.06)] transition-all">
               <span>🖼</span> PNG 다운로드
             </button>
           </div>
@@ -266,10 +285,20 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
         <div className="rounded-2xl border border-dashed border-slate-300 dark:border-slate-600
                         bg-slate-50 dark:bg-slate-900/40 py-10 text-center">
           <p className="text-[13px] text-slate-400 dark:text-slate-500 m-0">
-            AI가 요일/시간 정보를 포함한 경우에만 시간표 그리드가 표시됩니다.
+            수강 계획 데이터가 없습니다. Plan A~D를 먼저 생성하세요.
           </p>
-          <p className="text-[12px] text-slate-400 dark:text-slate-500 mt-1 m-0">
-            학생 정보에 선호 요일을 명시하면 더 정확한 결과를 얻을 수 있습니다.
+        </div>
+      )}
+
+      {hasAnyData && (
+        <div className="flex flex-wrap gap-4 justify-end mt-2">
+          {displayPlans.some((p) => (p?.courses ?? []).some((c) => !c?.day || !c?.time)) && (
+            <p className="text-[11px] text-slate-400 dark:text-slate-500 m-0">
+              (가상) 표시 과목은 AI가 요일/시간을 제공하지 않아 최적 배치로 자동 생성되었습니다.
+            </p>
+          )}
+          <p className="text-[11px] text-rose-400 dark:text-rose-500 m-0">
+            ● 재수강 과목은 모든 플랜에서 최우선 배치됩니다.
           </p>
         </div>
       )}

@@ -293,6 +293,109 @@ export function buildPlannerConstraints(rules: CourseRule[]): string {
   return lines.join("\n");
 }
 
+// ─── Retake Course Locking ────────────────────────────────────────────────────
+
+/**
+ * Lock retake courses at the TOP of every plan — they are non-negotiable.
+ * A course is treated as a retake if:
+ *   1. (course as any).retake === true, OR
+ *   2. course.code is in the retakeCodes list (case-insensitive), OR
+ *   3. course.note includes "재수강"
+ */
+export function lockRetakesFirst(
+  courses: Course[],
+  retakeCodes: string[] = [],
+): Course[] {
+  const retakeSet = new Set(retakeCodes.map((c) => c.toLowerCase()));
+
+  function isRetake(c: Course): boolean {
+    if ((c as unknown as { retake?: boolean }).retake === true) return true;
+    if (c.code != null && retakeSet.has(c.code.toLowerCase())) return true;
+    if (c.note && c.note.includes("재수강")) return true;
+    return false;
+  }
+
+  const retakes = courses.filter(isRetake);
+  const rest    = courses.filter((c) => !isRetake(c));
+  return [...retakes, ...rest];
+}
+
+// ─── 4-Way Scenario Engine ────────────────────────────────────────────────────
+
+interface ScenarioConfig {
+  label: string;
+  strategy: string;
+  targetCredits: number;
+  preferOffDay: string;
+}
+
+const SCENARIO_PRESETS: ScenarioConfig[] = [
+  {
+    label:         "Plan A",
+    strategy:      "재수강 우선 + 전공필수 확보 (성적 회복 집중형)",
+    targetCredits: 18,
+    preferOffDay:  "금",
+  },
+  {
+    label:         "Plan B",
+    strategy:      "균형 이수 (오전 집중 + 수요일 공강)",
+    targetCredits: 18,
+    preferOffDay:  "수",
+  },
+  {
+    label:         "Plan C",
+    strategy:      "공강일 최대화 (취업·스터디 병행형 15학점)",
+    targetCredits: 15,
+    preferOffDay:  "금",
+  },
+  {
+    label:         "Plan D",
+    strategy:      "경량 학기 (실습·인턴십 병행 최소 이수 12학점)",
+    targetCredits: 12,
+    preferOffDay:  "월",
+  },
+];
+
+/**
+ * Generate 4 distinct course plans from a pool of available courses.
+ * Retake courses are ALWAYS locked at the top of every plan.
+ * Each scenario trims to its targetCredits, then injects virtual times and scores.
+ */
+export function generateFourScenarios(
+  coursePool: Course[],
+  rules: CourseRule[] = [],
+  retakeCodes: string[] = [],
+): Array<StudyPlan & { score: number; conflicts: TimeConflict[] }> {
+  return SCENARIO_PRESETS.map((cfg) => {
+    // 1. Apply rules priority + lock retakes at top
+    const ordered = lockRetakesFirst(prioritizeRequired(coursePool, rules), retakeCodes);
+
+    // 2. Trim greedily to targetCredits
+    let used = 0;
+    const picked = ordered.filter((c) => {
+      const cr = c.credits ?? 3;
+      if (used + cr <= cfg.targetCredits) { used += cr; return true; }
+      return false;
+    });
+
+    // 3. Inject virtual times for courses missing schedule data
+    const withTimes = generateVirtualTimes(picked, cfg.preferOffDay);
+
+    // 4. Annotate
+    const conflicts = checkTimeConflict(withTimes);
+    const score     = scorePlan(withTimes, cfg.preferOffDay);
+
+    return {
+      label:        cfg.label,
+      strategy:     cfg.strategy,
+      courses:      withTimes,
+      totalCredits: used,
+      score,
+      conflicts,
+    };
+  });
+}
+
 // ─── Plan Annotation ──────────────────────────────────────────────────────────
 
 /**
