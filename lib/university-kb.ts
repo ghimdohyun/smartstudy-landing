@@ -170,6 +170,14 @@ export function detectUniversityFromFilename(filename: string): string {
   return "generic";
 }
 
+/** Infers university ID from free-text student input (studentInfo field) */
+export function detectUniversityFromText(text: string): string {
+  const s = text.toLowerCase();
+  if (s.includes("경성") || s.includes("kyungsung")) return "kyungsung-sw";
+  if (s.includes("서강") || s.includes("sogang")) return "sogang-general";
+  return "generic";
+}
+
 // ─── Graduation Requirement Extractor (modular pattern) ──────────────────────
 
 /** Extracts a structured graduation requirement summary from any UniversityConfig */

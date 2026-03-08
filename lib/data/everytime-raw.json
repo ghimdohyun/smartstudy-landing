@@ -1,0 +1,605 @@
+{
+  "source": "에브리타임 강의평가",
+  "extractedAt": "2026-03-08",
+  "universityId": "kyungsung-sw",
+  "courses": [
+    {
+      "code": "QC001001",
+      "name": "대학생을위한문화예술경영의이해",
+      "professor": "백수정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 4.0,
+      "addedCount": 136,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC001002",
+      "name": "대학생을위한문화예술경영의이해",
+      "professor": "백수정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 4.0,
+      "addedCount": 90,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC001003",
+      "name": "대학생을위한문화예술경영의이해",
+      "professor": "백수정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 4.5,
+      "addedCount": 91,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC002001",
+      "name": "디자인커넥션",
+      "professor": "이경림",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "30관 615" }
+      ],
+      "rating": 5.0,
+      "addedCount": 214,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC002002",
+      "name": "디자인커넥션",
+      "professor": "이경림",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 5.0,
+      "addedCount": 131,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC002003",
+      "name": "디자인커넥션",
+      "professor": "이경림",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 5.0,
+      "addedCount": 99,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC004001",
+      "name": "세계음악유랑",
+      "professor": "김가영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 156,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC004002",
+      "name": "세계음악유랑",
+      "professor": "김가영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 95,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QC004003",
+      "name": "세계음악유랑",
+      "professor": "김가영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 108,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY011001",
+      "name": "취창업진로설계",
+      "professor": "이소영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [1], "room": "" }
+      ],
+      "rating": 5.0,
+      "addedCount": 1529,
+      "isGraduationRequired": false,
+      "graduationTag": "교양추천"
+    },
+    {
+      "code": "QY003087",
+      "name": "사고와표현(1)",
+      "professor": "김혜영",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "금", "periods": [4, 5], "room": "30관 408" }
+      ],
+      "rating": 1.0,
+      "addedCount": 56,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012140",
+      "name": "English Communication(1)",
+      "professor": "메이",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [2, 3], "room": "30관 614" }
+      ],
+      "rating": 4.5,
+      "addedCount": 30,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012141",
+      "name": "English Communication(1)",
+      "professor": "메이",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [8, 9], "room": "30관 614" }
+      ],
+      "rating": 4.5,
+      "addedCount": 27,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012142",
+      "name": "English Communication(1)",
+      "professor": "메이",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "화", "periods": [8, 9], "room": "30관 614" }
+      ],
+      "rating": 4.5,
+      "addedCount": 37,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012143",
+      "name": "English Communication(1)",
+      "professor": "메이",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "수", "periods": [2, 3], "room": "30관 614" }
+      ],
+      "rating": 4.5,
+      "addedCount": 23,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012144",
+      "name": "English Communication(1)",
+      "professor": "메이",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "수", "periods": [8, 9], "room": "30관 614" }
+      ],
+      "rating": 4.5,
+      "addedCount": 24,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012145",
+      "name": "English Communication(1)",
+      "professor": "인드라",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [4, 5], "room": "30관 715" }
+      ],
+      "rating": 5.0,
+      "addedCount": 28,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012146",
+      "name": "English Communication(1)",
+      "professor": "인드라",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [6, 7], "room": "30관 715" }
+      ],
+      "rating": 5.0,
+      "addedCount": 21,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012147",
+      "name": "English Communication(1)",
+      "professor": "인드라",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [8, 9], "room": "30관 715" }
+      ],
+      "rating": 5.0,
+      "addedCount": 22,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012148",
+      "name": "English Communication(1)",
+      "professor": "인드라",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "목", "periods": [4, 5], "room": "30관 713" }
+      ],
+      "rating": 5.0,
+      "addedCount": 33,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY012149",
+      "name": "English Communication(1)",
+      "professor": "제프",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [6, 7], "room": "30관 716" }
+      ],
+      "rating": 5.0,
+      "addedCount": 36,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QY027045",
+      "name": "인성과성찰",
+      "professor": "김세경",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "월", "periods": [8, 9], "room": "30관 801" }
+      ],
+      "rating": 3.5,
+      "addedCount": 57,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA001001",
+      "name": "인문고전읽기와창의적소통",
+      "professor": "김은정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 125,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA001002",
+      "name": "인문고전읽기와창의적소통",
+      "professor": "김은정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 95,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA001003",
+      "name": "인문고전읽기와창의적소통",
+      "professor": "김은정",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [10, 11, 12], "room": "30관 101" }
+      ],
+      "rating": 5.0,
+      "addedCount": 86,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA002001",
+      "name": "영화로보는서양문화사이야기",
+      "professor": "강내영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 5.0,
+      "addedCount": 170,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA002002",
+      "name": "영화로보는서양문화사이야기",
+      "professor": "강내영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 5.0,
+      "addedCount": 91,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA002003",
+      "name": "영화로보는서양문화사이야기",
+      "professor": "강내영",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 5.0,
+      "addedCount": 85,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA003001",
+      "name": "디지털과비즈니스",
+      "professor": "김태훈",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 4.5,
+      "addedCount": 128,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA003002",
+      "name": "디지털과비즈니스",
+      "professor": "김태훈",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 4.5,
+      "addedCount": 92,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "QA003003",
+      "name": "디지털과비즈니스",
+      "professor": "김태훈",
+      "category": "기초교양",
+      "credits": 1,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "수", "periods": [10, 11, 12], "room": "28관 230" }
+      ],
+      "rating": 4.5,
+      "addedCount": 91,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    },
+    {
+      "code": "EO201001",
+      "name": "자바프로그래밍",
+      "professor": "홍석희",
+      "category": "학부기초",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "목", "periods": [7, 8, 9], "room": "8관 629" }
+      ],
+      "rating": 3.5,
+      "addedCount": 20,
+      "isGraduationRequired": false,
+      "graduationTag": "전공기초",
+      "academicRulesCode": "EO201"
+    },
+    {
+      "code": "EO201002",
+      "name": "자바프로그래밍",
+      "professor": "최동한",
+      "category": "학부기초",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [6, 7, 8], "room": "8관 626" }
+      ],
+      "rating": 3.5,
+      "addedCount": 34,
+      "isGraduationRequired": false,
+      "graduationTag": "전공기초",
+      "academicRulesCode": "EO201"
+    },
+    {
+      "code": "SE669001",
+      "name": "자료구조",
+      "professor": "강인수",
+      "category": "학부기초",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [3], "room": "8관 318" },
+        { "day": "수", "periods": [3, 4], "room": "8관 318" }
+      ],
+      "rating": 5.0,
+      "addedCount": 51,
+      "isGraduationRequired": true,
+      "graduationTag": "전공기초필수",
+      "academicRulesCode": "EO111",
+      "graduationNote": "academic-rules.json EO111 자료구조 — 알고리즘·DB 선수 과목, 2학기만 개설"
+    },
+    {
+      "code": "EO203001",
+      "name": "전산수학",
+      "professor": "지상문",
+      "category": "전공",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "목", "periods": [2, 3, 4], "room": "8관 626" }
+      ],
+      "rating": 3.5,
+      "addedCount": 48,
+      "isGraduationRequired": true,
+      "graduationTag": "전공기초필수(위험)",
+      "academicRulesCode": "EO203",
+      "graduationNote": "academic-rules.json EO203 전산수학 — 미이수 시 3학년 전공선택 사실상 수강 불가. riskRule: missing-eo203 (severity: danger)"
+    },
+    {
+      "code": "EO204001",
+      "name": "계산이론",
+      "professor": "강인수",
+      "category": "전공",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [4], "room": "8관 318" },
+        { "day": "수", "periods": [8, 9], "room": "8관 318" }
+      ],
+      "rating": 5.0,
+      "addedCount": 54,
+      "isGraduationRequired": false,
+      "graduationTag": "전공선택",
+      "academicRulesCode": "EO204"
+    },
+    {
+      "code": "EO209001",
+      "name": "리눅스시스템",
+      "professor": "최동한",
+      "category": "전공",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "월", "periods": [7, 8, 9], "room": "8관 626" }
+      ],
+      "rating": 2.0,
+      "addedCount": 40,
+      "isGraduationRequired": true,
+      "graduationTag": "전공기초필수(위험)",
+      "academicRulesCode": "EO209",
+      "graduationNote": "academic-rules.json EO209 리눅스시스템 — 미이수 시 운영체제·컴퓨터구조 수강 불가. riskRule: missing-eo209 (severity: danger)"
+    },
+    {
+      "code": "SE668001",
+      "name": "컴퓨터구조",
+      "professor": "홍석희",
+      "category": "전공",
+      "credits": 3,
+      "targetYear": "2학년",
+      "schedule": [
+        { "day": "화", "periods": [9], "room": "8관 318" },
+        { "day": "수", "periods": [6, 7], "room": "8관 318" }
+      ],
+      "rating": 4.0,
+      "addedCount": 52,
+      "isGraduationRequired": false,
+      "graduationTag": "전공선택",
+      "academicRulesCode": "EO302"
+    },
+    {
+      "code": "QY003088",
+      "name": "사고와표현(1)",
+      "professor": "박지희",
+      "category": "기초교양",
+      "credits": 2,
+      "targetYear": "A학년",
+      "schedule": [
+        { "day": "수", "periods": [4, 5], "room": "30관 620" }
+      ],
+      "rating": 3.0,
+      "addedCount": 43,
+      "isGraduationRequired": false,
+      "graduationTag": null
+    }
+  ]
+}

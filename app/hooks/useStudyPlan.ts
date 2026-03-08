@@ -10,6 +10,7 @@ import { useRouter } from 'next/navigation';
 import type { StudyPlanInput, StudyPlanResult } from '@/types';
 import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from '@/lib/api';
 import { StudyPlanResultSchema, isUsableResult } from '@/lib/validations/study-plan-result';
+import { detectUniversityFromText } from '@/lib/university-kb';
 
 // ─── Retry config ─────────────────────────────────────────────────────────────
 const MAX_RETRIES = 2;          // total extra attempts after first try
@@ -169,9 +170,19 @@ export function useStudyPlan() {
     stepsRef.current       = buildLoadingSteps(imageCount);
     stepIntervalRef.current = imageCount > VISION_BATCH_SIZE ? MULTI_STEP_MS : SINGLE_STEP_MS;
 
+    // Detect university from studentInfo text; persist to localStorage so /plan
+    // can gate graduation-risk checks on the correct preset.
+    const detectedUniversity =
+      input.studentInfo ? detectUniversityFromText(input.studentInfo) : "generic";
     const universityId =
       typeof window !== 'undefined'
-        ? localStorage.getItem('smartstudy_university') ?? undefined
+        ? (() => {
+            if (detectedUniversity !== "generic") {
+              localStorage.setItem('smartstudy_university', detectedUniversity);
+              return detectedUniversity;
+            }
+            return localStorage.getItem('smartstudy_university') ?? undefined;
+          })()
         : undefined;
     const enrichedInput = { ...input, universityId };
 

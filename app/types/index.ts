@@ -42,6 +42,14 @@ export interface Course {
   day?: string;
   time?: string;
   note?: string;
+  /** Optional extra fields populated by planner-engine / everytime data */
+  professor?: string;
+  room?: string;
+  rating?: number;
+  /** Course ID (mirrors code when set by planner-engine) */
+  id?: string;
+  /** Category string from everytime data */
+  category?: string;
 }
 
 export interface StudyPlan {

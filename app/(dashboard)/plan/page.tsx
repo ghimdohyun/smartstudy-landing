@@ -14,6 +14,7 @@ import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
 import { RESULT_DATA_VERSION } from "@/hooks/useStudyPlan";
 import { detectGraduationRisk, parseStudentGrade } from "@/lib/graduation-risk";
 import GraduationRiskBanner from "@/components/GraduationRiskBanner";
+import { generateAllPlans, type EngineResult } from "@/lib/planner-engine";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -148,6 +149,112 @@ function PlanPageSkeleton() {
   );
 }
 
+// ─── Engine Plan Section ──────────────────────────────────────────────────────
+
+const ENGINE_ACCENT = ["#6366f1", "#10b981", "#f59e0b", "#ef4444"];
+
+function EnginePlanSection({
+  enginePlans,
+  activeIdx,
+  setActiveIdx,
+  view,
+  setView,
+  activePlan,
+}: {
+  enginePlans: EngineResult[];
+  activeIdx: number;
+  setActiveIdx: (i: number) => void;
+  view: "card" | "timetable";
+  setView: (v: "card" | "timetable") => void;
+  activePlan: EngineResult;
+}) {
+  return (
+    <>
+      {/* Tabs */}
+      <div className="flex gap-0 border-b border-slate-200 dark:border-slate-700 overflow-x-auto">
+        {enginePlans.map((ep, i) => {
+          const accent = ENGINE_ACCENT[i % ENGINE_ACCENT.length];
+          const isActive = i === activeIdx;
+          return (
+            <button
+              key={ep.planId}
+              type="button"
+              onClick={() => setActiveIdx(i)}
+              className="px-5 py-2.5 text-[13px] font-bold whitespace-nowrap transition-all rounded-t-lg border-b-2 -mb-px"
+              style={isActive
+                ? { color: accent, borderColor: accent, background: `${accent}08` }
+                : { color: "#94a3b8", borderColor: "transparent" }
+              }
+            >
+              {ep.emoji} {ep.label}
+              <span className="ml-1.5 text-[11px] font-normal opacity-60">{ep.totalCredits}학점</span>
+            </button>
+          );
+        })}
+      </div>
+
+      {/* Toolbar */}
+      <div className="flex items-center justify-between py-3 flex-wrap gap-2">
+        <div className="flex flex-col gap-0.5">
+          <p className="m-0 text-[13px] font-semibold text-black dark:text-white">{activePlan.description}</p>
+          <p className="m-0 text-[11px] text-gray-500 dark:text-gray-400">
+            평균 평점 {activePlan.avgRating}점 ·
+            공강일: {activePlan.freeDays.length > 0 ? activePlan.freeDays.join("·") + "요일" : "없음"}
+          </p>
+        </div>
+        <div className="flex rounded-lg border border-slate-200 dark:border-slate-700 overflow-hidden text-[12px] font-semibold bg-white dark:bg-slate-900">
+          {(["timetable", "card"] as const).map((v) => (
+            <button key={v} type="button" onClick={() => setView(v)}
+              className={[
+                "px-3 py-1.5 transition-colors",
+                v === "card" && "border-l border-slate-200 dark:border-slate-700",
+                view === v ? "bg-indigo-600 text-white" : "text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200",
+              ].filter(Boolean).join(" ")}>
+              {v === "timetable" ? "🗓 시간표" : "카드"}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Content */}
+      {view === "timetable" ? (
+        <TimetableGrid
+          plans={[{ label: activePlan.label, courses: activePlan.courses, totalCredits: activePlan.totalCredits }]}
+          colorOffset={activeIdx}
+        />
+      ) : (
+        <div className="rounded-2xl border border-white/60 dark:border-slate-700/60 bg-white/96 dark:bg-slate-900/96 backdrop-blur-[20px] p-6">
+          <div className="flex flex-wrap gap-2 mb-4">
+            {activePlan.courses.map((c: import("@/types").Course) => (
+              <div key={c.id ?? c.name} className="flex flex-col gap-0.5 px-3 py-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/60 dark:border-slate-700/60 min-w-[140px]">
+                <span className="text-[13px] font-semibold text-black dark:text-white truncate max-w-[200px]">{c.name}</span>
+                {c.professor && <span className="text-[11px] text-gray-500 dark:text-gray-400">{c.professor}</span>}
+                <div className="flex gap-2 mt-0.5 flex-wrap">
+                  {c.credits !== undefined && (
+                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300">{c.credits}학점</span>
+                  )}
+                  {c.day && c.time && (
+                    <span className="text-[10px] text-gray-500 dark:text-gray-400">{c.day} {c.time}</span>
+                  )}
+                  {c.rating !== undefined && c.rating > 0 && (
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400">★{c.rating}</span>
+                  )}
+                </div>
+                {c.requirement && (
+                  <span className="text-[10px] text-gray-400 dark:text-gray-500">{c.requirement}</span>
+                )}
+              </div>
+            ))}
+          </div>
+          <p className="m-0 text-[12px] text-gray-500 dark:text-gray-400 border-t border-slate-200 dark:border-slate-700 pt-3">
+            총 {activePlan.totalCredits}학점 · 평균 평점 {activePlan.avgRating} · 점수 {activePlan.score}
+          </p>
+        </div>
+      )}
+    </>
+  );
+}
+
 // ─── Page ─────────────────────────────────────────────────────────────────────
 
 export default function PlanPage() {
@@ -162,6 +269,10 @@ export default function PlanPage() {
   const [studentInfo, setStudentInfo] = useState("");
   /** Ref for the capturable plan content area (card + timetable) */
   const planContentRef = useRef<HTMLDivElement>(null);
+  /** Engine-generated plans from everytime-raw.json (kyungsung-sw only) */
+  const [enginePlans, setEnginePlans] = useState<EngineResult[]>([]);
+  const [activeEngineIdx, setActiveEngineIdx] = useState(0);
+  const [engineView, setEngineView] = useState<"card" | "timetable">("timetable");
 
   useEffect(() => {
     const stored = localStorage.getItem("smartstudy_result");
@@ -207,6 +318,14 @@ export default function PlanPage() {
       window.history.replaceState({}, "", "/plan");
     }
 
+    // Generate engine plans for kyungsung-sw preset
+    const uid = localStorage.getItem("smartstudy_university") ?? "generic";
+    if (uid === "kyungsung-sw") {
+      try {
+        setEnginePlans(generateAllPlans());
+      } catch { /* ignore — engine is best-effort */ }
+    }
+
     setMounted(true);
   }, []);
 
@@ -214,6 +333,34 @@ export default function PlanPage() {
   if (!mounted) return <PlanPageSkeleton />;
 
   if (!result) {
+    // If engine plans available (kyungsung-sw), show them directly
+    if (enginePlans.length > 0) {
+      const ep = enginePlans[activeEngineIdx] ?? enginePlans[0];
+      return (
+        <main className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60">
+          <div className="max-w-[960px] mx-auto">
+            <div className="flex items-start justify-between mb-7 gap-4 flex-wrap">
+              <div>
+                <Link href="/" className="text-[13px] text-gray-500 dark:text-gray-400 no-underline hover:text-gray-700 dark:hover:text-gray-200 transition-colors">← 돌아가기</Link>
+                <h1 className="text-2xl font-bold text-black dark:text-white mt-1.5 mb-1">수강신청 플랜 (에브리타임 기반)</h1>
+                <p className="text-[13px] text-gray-500 dark:text-gray-400 m-0">에브리타임 강의평가 데이터로 자동 생성된 Plan A~D</p>
+              </div>
+              <Link href="/" className="px-5 py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-full text-[13px] font-semibold no-underline shadow-[0_4px_10px_rgba(16,185,129,0.3)] transition-colors self-center">
+                AI 플랜 생성하기
+              </Link>
+            </div>
+            <EnginePlanSection
+              enginePlans={enginePlans}
+              activeIdx={activeEngineIdx}
+              setActiveIdx={setActiveEngineIdx}
+              view={engineView}
+              setView={setEngineView}
+              activePlan={ep}
+            />
+          </div>
+        </main>
+      );
+    }
     return (
       <main className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60 p-8">
         <p className="text-base text-gray-500 dark:text-gray-400 mb-4">
@@ -423,6 +570,27 @@ export default function PlanPage() {
               {result.raw}
             </pre>
           </div>
+        )}
+
+        {/* Engine plans section (everytime-based, kyungsung-sw only) */}
+        {enginePlans.length > 0 && (
+          <section className="mt-10">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-base font-bold text-black dark:text-white">에브리타임 기반 수강신청 플랜</span>
+              <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold">자동생성</span>
+            </div>
+            <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-4 -mt-2">
+              에브리타임 강의평가 데이터 + academic-rules.json 기반 백트래킹 엔진이 자동 생성
+            </p>
+            <EnginePlanSection
+              enginePlans={enginePlans}
+              activeIdx={activeEngineIdx}
+              setActiveIdx={setActiveEngineIdx}
+              view={engineView}
+              setView={setEngineView}
+              activePlan={enginePlans[activeEngineIdx] ?? enginePlans[0]}
+            />
+          </section>
         )}
 
         {/* 편람 근거 데이터 */}

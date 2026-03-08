@@ -228,7 +228,7 @@ export default function ServiceSection() {
     setMounted(true);
     // Default to generic config (remove any stale university-specific value)
     const stored = localStorage.getItem('smartstudy_university');
-    if (!stored || stored === 'kyungsung-sw' || stored === 'sogang-general') {
+    if (!stored) {
       localStorage.setItem('smartstudy_university', 'generic');
     }
   }, []);

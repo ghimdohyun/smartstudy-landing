@@ -42,3 +42,23 @@ next-env.d.ts
 
 .vercel
 .env*.local
+
+# ── Project-specific ignores ────────────────────────────────────────────────
+
+# Temporary / development reference files (data already extracted to JSON)
+/temp_images/
+/kyungsung-curriculum-2025.pdf/
+
+# Shadow / duplicate app subtree (legacy migration artifact)
+/app/app/
+
+# Backup route files
+**/*.route.bak
+**/*.bak
+
+# Claude Code local IDE settings (machine-specific)
+.claude/settings.local.json
+**/.claude/settings.local.json
+
+# Claude Code skill definition files (project-local, not for deployment)
+*.SKILL.md
