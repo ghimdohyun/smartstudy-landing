@@ -12,6 +12,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
 import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
 import { RESULT_DATA_VERSION } from "@/hooks/useStudyPlan";
+import { detectGraduationRisk, parseStudentGrade } from "@/lib/graduation-risk";
+import GraduationRiskBanner from "@/components/GraduationRiskBanner";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -157,6 +159,7 @@ export default function PlanPage() {
   /** 0-based index of the currently active Plan tab (A=0 B=1 C=2 D=3) */
   const [activePlanIdx, setActivePlanIdx] = useState(0);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [studentInfo, setStudentInfo] = useState("");
   /** Ref for the capturable plan content area (card + timetable) */
   const planContentRef = useRef<HTMLDivElement>(null);
 
@@ -190,6 +193,15 @@ export default function PlanPage() {
       }
     }
 
+    // Read studentInfo for grade/semester parsing (set by useStudyPlan on generate)
+    const storedInput = localStorage.getItem("smartstudy_last_input");
+    if (storedInput) {
+      try {
+        const inp = JSON.parse(storedInput) as Record<string, unknown>;
+        if (inp?.studentInfo) setStudentInfo(String(inp.studentInfo));
+      } catch { /* ignore */ }
+    }
+
     if (window.location.search.includes("upgraded=1")) {
       setShowUpgraded(true);
       window.history.replaceState({}, "", "/plan");
@@ -219,6 +231,17 @@ export default function PlanPage() {
 
   const hasPlans = (result.plans ?? []).length > 0;
   const plans    = result.plans ?? [];
+
+  // Graduation risk — only run for kyungsung-sw preset
+  const universityId =
+    typeof window !== "undefined"
+      ? (localStorage.getItem("smartstudy_university") ?? "generic")
+      : "generic";
+  const { year: studentYear, semester: studentSemester } = parseStudentGrade(studentInfo);
+  const graduationRisk =
+    universityId === "kyungsung-sw" && hasPlans
+      ? detectGraduationRisk(plans, studentYear, studentSemester)
+      : null;
   const activePlan = plans[activePlanIdx] ?? plans[0];
 
   const PLAN_META = [
@@ -303,6 +326,11 @@ export default function PlanPage() {
             )}
           </div>
         </div>
+
+        {/* Graduation risk banner — shown when kyungsung-sw + missing required courses */}
+        {graduationRisk && graduationRisk.severity !== "safe" && (
+          <GraduationRiskBanner risk={graduationRisk} />
+        )}
 
         {/* Plan A~D — tabbed single-plan view */}
         {hasPlans && (

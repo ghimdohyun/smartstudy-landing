@@ -398,9 +398,10 @@ interface Props {
   loading: boolean;
   status: string;
   error: string | null;
+  onFormChange?: (studentInfo: string, timetableInfo: string, hasImage: boolean) => void;
 }
 
-export default function StudyPlanForm({ onSubmit, loading, status, error }: Props) {
+export default function StudyPlanForm({ onSubmit, loading, status, error, onFormChange }: Props) {
   const [mode,          setMode]          = useState<"plans" | "year">("plans");
   const [studentInfo,   setStudentInfo]   = useState("");
   const [timetableInfo, setTimetableInfo] = useState("");
@@ -412,6 +413,11 @@ export default function StudyPlanForm({ onSubmit, loading, status, error }: Prop
     typeof window !== "undefined"
       ? (localStorage.getItem("smartstudy_university") ?? undefined)
       : undefined;
+
+  // Notify parent of input changes for live risk detection
+  useEffect(() => {
+    onFormChange?.(studentInfo, timetableInfo, !!imageUrl);
+  }, [studentInfo, timetableInfo, imageUrl, onFormChange]);
 
   const handlePdfExtracted = useCallback((r: PdfExtractResult) => {
     setTimetableInfo(r.curriculumText); setPdfMode(true);

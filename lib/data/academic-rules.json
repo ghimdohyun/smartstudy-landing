@@ -1,0 +1,358 @@
+{
+  "universityId": "kyungsung-sw",
+  "universityName": "경성대학교",
+  "department": "소프트웨어학과",
+  "version": "2025",
+  "graduationCredits": 130,
+  "majorCredits": 48,
+  "codeSystem": "EO1xx=전공기초 / EO2xx~EO3xx=전공선택 / GE=교양",
+  "courses": [
+    {
+      "code": "EO101",
+      "name": "C프로그래밍",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": true,
+      "note": "전공기초 첫 과목 — 모든 후속 전공 과목의 선수 조건"
+    },
+    {
+      "code": "EO102",
+      "name": "이산수학",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": true,
+      "note": "알고리즘·AI 과목 선수 조건"
+    },
+    {
+      "code": "EO103",
+      "name": "컴퓨터개론",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": false,
+      "note": "1학년 전공기초"
+    },
+    {
+      "code": "EO111",
+      "name": "자료구조",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [2],
+      "required": true,
+      "offeredOnce": true,
+      "note": "알고리즘·DB 선수 과목 — 2학기만 개설"
+    },
+    {
+      "code": "EO112",
+      "name": "객체지향프로그래밍",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [2],
+      "required": true,
+      "offeredOnce": true,
+      "note": "소프트웨어공학·웹개발 선수 과목"
+    },
+    {
+      "code": "EO113",
+      "name": "선형대수",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 1,
+      "semesters": [2],
+      "required": true,
+      "offeredOnce": true,
+      "note": "AI·딥러닝 선수 조건"
+    },
+    {
+      "code": "EO201",
+      "name": "알고리즘",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO111", "EO102"],
+      "note": "코딩테스트 및 취업 핵심 과목 — 1학기만 개설"
+    },
+    {
+      "code": "EO203",
+      "name": "전산수학",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 2,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": true,
+      "note": "2학년 1학기 전공기초 필수 — 후속 전공선택 사실상 선수 조건. 미이수 시 3학년 전공 수강 불가"
+    },
+    {
+      "code": "EO209",
+      "name": "리눅스시스템",
+      "credits": 3,
+      "category": "전공기초",
+      "year": 2,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": true,
+      "note": "2학년 1학기 전공기초 필수 — 운영체제·서버 과목 선수 조건"
+    },
+    {
+      "code": "EO204",
+      "name": "데이터베이스",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": false,
+      "prerequisites": ["EO111"],
+      "note": "웹·백엔드 트랙 필수 이수 권장"
+    },
+    {
+      "code": "EO211",
+      "name": "운영체제",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO209"],
+      "note": "시스템 프로그래밍 선수 과목"
+    },
+    {
+      "code": "EO212",
+      "name": "컴퓨터네트워크",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": true,
+      "note": "클라우드·보안 트랙 필수 이수 권장"
+    },
+    {
+      "code": "EO213",
+      "name": "소프트웨어공학",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": false,
+      "prerequisites": ["EO112"],
+      "note": "팀 프로젝트 진행 과목"
+    },
+    {
+      "code": "EO214",
+      "name": "웹프로그래밍",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": false,
+      "prerequisites": ["EO112"],
+      "note": "프론트엔드·풀스택 트랙"
+    },
+    {
+      "code": "EO301",
+      "name": "인공지능",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO203", "EO113"],
+      "note": "AI·데이터사이언스 트랙 핵심 — 1학기만 개설"
+    },
+    {
+      "code": "EO302",
+      "name": "컴퓨터구조",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO209"],
+      "note": "임베디드·시스템 트랙"
+    },
+    {
+      "code": "EO303",
+      "name": "컴파일러",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO201"],
+      "note": "고급 시스템 과목"
+    },
+    {
+      "code": "EO304",
+      "name": "캡스톤디자인1",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [1],
+      "required": true,
+      "offeredOnce": true,
+      "note": "3학년 1학기 팀 프로젝트 — 졸업요건 필수"
+    },
+    {
+      "code": "EO311",
+      "name": "딥러닝",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO301", "EO113"],
+      "note": "AI 심화 트랙"
+    },
+    {
+      "code": "EO312",
+      "name": "클라우드컴퓨팅",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [2],
+      "required": false,
+      "offeredOnce": true,
+      "prerequisites": ["EO212"],
+      "note": "클라우드·DevOps 트랙"
+    },
+    {
+      "code": "EO313",
+      "name": "캡스톤디자인2",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 3,
+      "semesters": [2],
+      "required": true,
+      "offeredOnce": true,
+      "prerequisites": ["EO304"],
+      "note": "3학년 2학기 팀 프로젝트 — 졸업요건 필수"
+    },
+    {
+      "code": "EO401",
+      "name": "졸업프로젝트",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 4,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "졸업 필수 — 4학년 이수"
+    },
+    {
+      "code": "GE-STARTUP",
+      "name": "창업기초",
+      "credits": 3,
+      "category": "교양",
+      "year": null,
+      "semesters": [1, 2],
+      "required": false,
+      "offeredOnce": false,
+      "note": "Plan C/D 교양 가중치 권장 — 3~4학년 경쟁 심함, 2학년 이수 권장"
+    },
+    {
+      "code": "GE-SELF",
+      "name": "자기관리역량",
+      "credits": 2,
+      "category": "교양필수",
+      "year": null,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "교양 필수 역량 — 졸업 요건"
+    },
+    {
+      "code": "GE-DIGITAL",
+      "name": "디지털역량",
+      "credits": 2,
+      "category": "교양필수",
+      "year": null,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "교양 필수 역량 — 졸업 요건"
+    },
+    {
+      "code": "GE-COMM",
+      "name": "소통역량",
+      "credits": 2,
+      "category": "교양필수",
+      "year": null,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "교양 필수 역량 — 졸업 요건"
+    }
+  ],
+  "riskRules": [
+    {
+      "triggerId": "missing-eo203",
+      "courses": ["EO203"],
+      "description": "전산수학(EO203) 미이수",
+      "consequence": "3학년 인공지능·컴파일러 등 전공선택 사실상 수강 불가",
+      "delayYears": 1,
+      "severity": "danger"
+    },
+    {
+      "triggerId": "missing-eo209",
+      "courses": ["EO209"],
+      "description": "리눅스시스템(EO209) 미이수",
+      "consequence": "운영체제·컴퓨터구조 등 시스템 계열 전공선택 수강 불가",
+      "delayYears": 1,
+      "severity": "danger"
+    },
+    {
+      "triggerId": "missing-both-y2s1",
+      "courses": ["EO203", "EO209"],
+      "description": "2학년 1학기 전공기초 핵심 2과목 동시 미이수",
+      "consequence": "전공기초 18학점 미충족 → 졸업 불가. 재이수 필요로 1년 지연 확실",
+      "delayYears": 1,
+      "severity": "danger"
+    },
+    {
+      "triggerId": "missing-capstone",
+      "courses": ["EO304", "EO313"],
+      "description": "캡스톤디자인 1·2 미이수",
+      "consequence": "졸업요건 필수 프로젝트 미완료 → 졸업 불가",
+      "delayYears": 1,
+      "severity": "danger"
+    },
+    {
+      "triggerId": "missing-eo101",
+      "courses": ["EO101"],
+      "description": "C프로그래밍(EO101) 미이수",
+      "consequence": "모든 전공 과목의 실질적 선수 조건 미충족",
+      "delayYears": 1,
+      "severity": "warning"
+    },
+    {
+      "triggerId": "missing-ge-required",
+      "courses": ["GE-SELF", "GE-DIGITAL", "GE-COMM"],
+      "description": "교양 필수 역량 미이수",
+      "consequence": "졸업 요건 미충족 — 자기관리·디지털·소통 역량 이수 필요",
+      "delayYears": 0,
+      "severity": "warning"
+    }
+  ]
+}

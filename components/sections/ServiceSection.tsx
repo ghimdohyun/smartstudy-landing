@@ -3,12 +3,15 @@
 
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import dynamic from 'next/dynamic';
 import UpgradeModal from '@/components/UpgradeModal';
 import ApiErrorModal from '@/components/ApiErrorModal';
+import GraduationRiskBanner from '@/components/GraduationRiskBanner';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useStudyPlan, RESULT_DATA_VERSION } from '@/hooks/useStudyPlan';
+import { detectVisionRisk } from '@/lib/vision-risk';
+import type { GraduationRisk } from '@/lib/graduation-risk';
 
 // SSR:false — StudyPlanForm uses FileReader, DnD, and pdf.js browser APIs that
 // do not exist in Node.js; prevents "window is not defined" hydration crashes.
@@ -224,6 +227,15 @@ export default function ServiceSection() {
     upgradeDetail, closeUpgradeModal,
   } = useStudyPlan();
 
+  const [visionRisk, setVisionRisk] = useState<GraduationRisk | null>(null);
+
+  const handleFormChange = useCallback((studentInfo: string, timetableInfo: string, hasImage: boolean) => {
+    // Only run risk check when there's meaningful input
+    if (!hasImage && !timetableInfo.trim()) { setVisionRisk(null); return; }
+    const risk = detectVisionRisk(studentInfo, timetableInfo);
+    setVisionRisk(risk);
+  }, []);
+
   useEffect(() => {
     setMounted(true);
 
@@ -315,11 +327,15 @@ export default function ServiceSection() {
             <AiAnalysisSkeleton status={status} />
           ) : (
             <div style={{ maxWidth: 640, margin: '0 auto' }}>
+              {/* Graduation risk banner — shown immediately when critical courses detected missing */}
+              {visionRisk && <GraduationRiskBanner risk={visionRisk} />}
+
               <StudyPlanForm
                 onSubmit={generate}
                 loading={false}
                 status={status}
                 error={isValidationError ? error : null}
+                onFormChange={handleFormChange}
               />
               {/* Disclaimer */}
               <Disclaimer />

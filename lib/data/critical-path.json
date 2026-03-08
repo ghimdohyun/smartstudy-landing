@@ -1,0 +1,247 @@
+{
+  "universityId": "kyungsung-sw",
+  "universityName": "경성대학교",
+  "department": "소프트웨어학과",
+  "version": "2025",
+  "description": "연 1회 개설 과목 및 졸업 필수 크리티컬 패스 — 이 과목 미이수 시 졸업 지연 위험",
+  "criticalCourses": [
+    {
+      "code": "EO101",
+      "name": "C프로그래밍",
+      "credits": 3,
+      "year": 1,
+      "semester": 1,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "모든 전공 과목의 사실상 선수 조건 — 미이수 시 전공기초 전체 지연",
+      "unlocks": ["EO201", "EO203", "EO209"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO102",
+      "name": "이산수학",
+      "credits": 3,
+      "year": 1,
+      "semester": 1,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "알고리즘·AI 과목 선수 조건 — 미이수 시 3학년 AI 트랙 불가",
+      "unlocks": ["EO201", "EO301"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO111",
+      "name": "자료구조",
+      "credits": 3,
+      "year": 1,
+      "semester": 2,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "알고리즘·DB 선수 과목 — 2학기만 개설, 미이수 시 2학년 전공선택 대부분 불가",
+      "unlocks": ["EO201", "EO204"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO112",
+      "name": "객체지향프로그래밍",
+      "credits": 3,
+      "year": 1,
+      "semester": 2,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "소프트웨어공학·웹개발 선수 과목 — 2학기만 개설",
+      "unlocks": ["EO213", "EO214"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO113",
+      "name": "선형대수",
+      "credits": 3,
+      "year": 1,
+      "semester": 2,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "AI·딥러닝 선수 조건 — 2학기만 개설, 미이수 시 3학년 딥러닝 수강 불가",
+      "unlocks": ["EO301", "EO311"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO203",
+      "name": "전산수학",
+      "credits": 3,
+      "year": 2,
+      "semester": 1,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "⚠️ 미이수 시 3학년 AI·컴파일러 수강 불가 → 졸업 1년 지연 확률 98%",
+      "unlocks": ["EO301", "EO303"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO209",
+      "name": "리눅스시스템",
+      "credits": 3,
+      "year": 2,
+      "semester": 1,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "⚠️ 미이수 시 운영체제·컴퓨터구조 수강 불가 → 시스템 트랙 졸업 지연",
+      "unlocks": ["EO211", "EO302"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO201",
+      "name": "알고리즘",
+      "credits": 3,
+      "year": 2,
+      "semester": 1,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "1학기만 개설 — 코딩테스트 핵심 과목, 취업·대학원 필수 이수 권장",
+      "unlocks": ["EO303"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO211",
+      "name": "운영체제",
+      "credits": 3,
+      "year": 2,
+      "semester": 2,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "2학기만 개설 — 시스템 프로그래밍 선수, EO209 필요",
+      "unlocks": [],
+      "delayYears": 1
+    },
+    {
+      "code": "EO212",
+      "name": "컴퓨터네트워크",
+      "credits": 3,
+      "year": 2,
+      "semester": 2,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "2학기만 개설 — 클라우드·보안 트랙 필수 이수 권장",
+      "unlocks": ["EO312"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO301",
+      "name": "인공지능",
+      "credits": 3,
+      "year": 3,
+      "semester": 1,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "1학기만 개설 — AI 트랙 핵심, EO203+EO113 모두 필요",
+      "unlocks": ["EO311"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO302",
+      "name": "컴퓨터구조",
+      "credits": 3,
+      "year": 3,
+      "semester": 1,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "1학기만 개설 — 임베디드·시스템 트랙, EO209 필요",
+      "unlocks": [],
+      "delayYears": 1
+    },
+    {
+      "code": "EO303",
+      "name": "컴파일러",
+      "credits": 3,
+      "year": 3,
+      "semester": 1,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "1학기만 개설 — 고급 시스템, EO201 필요",
+      "unlocks": [],
+      "delayYears": 1
+    },
+    {
+      "code": "EO304",
+      "name": "캡스톤디자인1",
+      "credits": 3,
+      "year": 3,
+      "semester": 1,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "1학기만 개설 — 졸업 필수, 미이수 시 캡스톤2 수강 불가 → 졸업 불가",
+      "unlocks": ["EO313"],
+      "delayYears": 1
+    },
+    {
+      "code": "EO311",
+      "name": "딥러닝",
+      "credits": 3,
+      "year": 3,
+      "semester": 2,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "2학기만 개설 — AI 심화 트랙, EO301+EO113 필요",
+      "unlocks": [],
+      "delayYears": 1
+    },
+    {
+      "code": "EO312",
+      "name": "클라우드컴퓨팅",
+      "credits": 3,
+      "year": 3,
+      "semester": 2,
+      "required": false,
+      "offeredOnce": true,
+      "riskMessage": "2학기만 개설 — 클라우드·DevOps 트랙, EO212 필요",
+      "unlocks": [],
+      "delayYears": 1
+    },
+    {
+      "code": "EO313",
+      "name": "캡스톤디자인2",
+      "credits": 3,
+      "year": 3,
+      "semester": 2,
+      "required": true,
+      "offeredOnce": true,
+      "riskMessage": "2학기만 개설 — 졸업 필수, EO304 선수 조건",
+      "unlocks": [],
+      "delayYears": 1
+    }
+  ],
+  "keyRisks": [
+    {
+      "id": "missing-eo203-eo209",
+      "courses": ["EO203", "EO209"],
+      "headline": "2학년 1학기 전공기초 핵심 미이수",
+      "riskMessage": "졸업 1년 지연 확률 98% — 재이수 기회: 다음 해 1학기",
+      "severity": "danger",
+      "delayYears": 1
+    },
+    {
+      "id": "missing-eo203",
+      "courses": ["EO203"],
+      "headline": "전산수학 누락",
+      "riskMessage": "3학년 AI·컴파일러 계열 수강 불가 → 졸업 1년 지연",
+      "severity": "danger",
+      "delayYears": 1
+    },
+    {
+      "id": "missing-eo209",
+      "courses": ["EO209"],
+      "headline": "리눅스시스템 누락",
+      "riskMessage": "운영체제·컴퓨터구조 수강 불가 → 시스템 트랙 지연",
+      "severity": "danger",
+      "delayYears": 1
+    },
+    {
+      "id": "missing-capstone",
+      "courses": ["EO304", "EO313"],
+      "headline": "캡스톤디자인 미이수",
+      "riskMessage": "졸업요건 필수 프로젝트 미완료 → 졸업 불가",
+      "severity": "danger",
+      "delayYears": 1
+    }
+  ]
+}

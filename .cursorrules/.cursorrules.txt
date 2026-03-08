@@ -1,0 +1,6 @@
+# SmartStudy Agent Instructions
+- Always reference `claude-vscode-lightweight-os.SKILL.md`.
+- Use autonomous agent mode for complex tasks.
+- Split tasks into Alpha(Data), Bravo(Logic), Charlie(UI), Delta(Infra).
+- Execute terminal commands with `/auto` whenever possible.
+- Prioritize raw UTF-8 for Korean text to avoid JSON encoding errors.
