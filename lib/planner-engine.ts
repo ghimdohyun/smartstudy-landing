@@ -13,6 +13,38 @@ import type { Course } from "@/types";
 import everytimeRaw from "./data/everytime-raw.json";
 import academicRules from "./data/academic-rules.json";
 
+// ─── Preference Types ──────────────────────────────────────────────────────────
+
+/**
+ * User-defined scheduling preferences injected into the scoring engine.
+ * All fields are optional — defaults produce neutral (zero) adjustments.
+ */
+export interface PlannerPreferences {
+  /**
+   * Penalty applied to courses that include 1교시 (09:00).
+   * Pass a NEGATIVE number, e.g. -20 to penalise morning starts.
+   * Default: 0 (no penalty).
+   */
+  penaltyEarlyMorning?: number;
+  /**
+   * List of professor name substrings to boost. Case-insensitive partial match.
+   * e.g. ["김철수", "이영희"]
+   */
+  bonusPreferredProfs?: string[];
+  /**
+   * Score bonus applied when a candidate course matches a preferred professor.
+   * Default: +25.
+   */
+  bonusProfWeight?: number;
+  /**
+   * Score awarded to any course that is a required prerequisite AND whose
+   * absence would break the graduation critical path. Use a high positive
+   * value (e.g. 60) so these courses are always selected first.
+   * Default: 0.
+   */
+  mandatoryChainScore?: number;
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 export interface EverytimeCourse {
@@ -75,6 +107,11 @@ function toAppCourse(et: EverytimeCourse): Course {
     ? `${String(Math.floor(startMin / 60)).padStart(2, "0")}:${String(startMin % 60).padStart(2, "0")}`
     : undefined;
 
+  // Resolve academic-rules metadata for enriched fields
+  const ruleCode = et.academicRulesCode ?? et.code;
+  const acYear = courseYearMap.get(ruleCode) ?? deriveYearFromCode(et.code);
+  const prereqFor = prerequisiteForMap.get(ruleCode) ?? [];
+
   return {
     id: et.code,
     name: et.name,
@@ -87,7 +124,21 @@ function toAppCourse(et: EverytimeCourse): Course {
     requirement: et.graduationTag ?? et.category,
     room: slot?.room,
     rating: et.rating,
+    // v2: enriched metadata
+    recommendedYear: acYear ?? undefined,
+    isPrerequisite: prereqFor.length > 0,
+    prerequisiteFor: prereqFor.length > 0 ? prereqFor : undefined,
   } as Course;
+}
+
+/**
+ * Derive recommended year from EO course code pattern.
+ * EO1xx → 1, EO2xx → 2, EO3xx → 3, EO4xx → 4, GE-* → null (general).
+ */
+function deriveYearFromCode(code: string): number | null {
+  const m = code.match(/^EO(\d)/i);
+  if (m) return parseInt(m[1], 10);
+  return null;
 }
 
 /** Build (day, startMin, endMin) intervals for a course */
@@ -152,16 +203,97 @@ function totalCredits(selected: EverytimeCourse[]): number {
   return selected.reduce((s, c) => s + c.credits, 0);
 }
 
+// ─── Academic-rules lookup maps ───────────────────────────────────────────────
+
+interface AcademicCourse {
+  code: string;
+  name: string;
+  year: number | null;
+  required: boolean;
+  offeredOnce: boolean;
+  prerequisites?: string[];
+}
+
+const academicCourses = academicRules.courses as AcademicCourse[];
+
 /** Required course codes from academic-rules.json */
 const requiredCodes = new Set(
-  (academicRules.courses as Array<{ code: string; required: boolean; offeredOnce: boolean }>)
-    .filter(c => c.required || c.offeredOnce)
-    .map(c => c.code)
+  academicCourses.filter(c => c.required || c.offeredOnce).map(c => c.code)
 );
+
+/** Map: course code → recommended year (1~4 or null) */
+const courseYearMap = new Map<string, number | null>(
+  academicCourses.map(c => [c.code, c.year])
+);
+
+/**
+ * Map: course code → list of course codes it is a prerequisite FOR.
+ * Built by inverting the `prerequisites` field in academic-rules.json.
+ */
+const prerequisiteForMap = new Map<string, string[]>();
+for (const c of academicCourses) {
+  for (const prereqCode of c.prerequisites ?? []) {
+    const existing = prerequisiteForMap.get(prereqCode) ?? [];
+    existing.push(c.code);
+    prerequisiteForMap.set(prereqCode, existing);
+  }
+}
 
 function isAcademicRequired(et: EverytimeCourse): boolean {
   return et.isGraduationRequired ||
     (et.academicRulesCode !== undefined && requiredCodes.has(et.academicRulesCode));
+}
+
+/** True if course has a 1교시 (09:00) slot — used for early-morning penalty */
+function hasMorningSlot(et: EverytimeCourse): boolean {
+  return et.schedule.some(s => s.periods.includes(1));
+}
+
+/**
+ * Compute the preference-based score modifier for a candidate course.
+ * Returns a signed delta to add on top of the plan's base scorer.
+ */
+function preferenceScore(
+  et: EverytimeCourse,
+  prefs: PlannerPreferences,
+  current: EverytimeCourse[],
+): number {
+  let delta = 0;
+
+  // 1. Early morning penalty
+  if (prefs.penaltyEarlyMorning && hasMorningSlot(et)) {
+    delta += prefs.penaltyEarlyMorning; // caller passes a negative number
+  }
+
+  // 2. Preferred professor bonus
+  if (prefs.bonusPreferredProfs && prefs.bonusPreferredProfs.length > 0) {
+    const profLower = et.professor.toLowerCase();
+    if (prefs.bonusPreferredProfs.some(p => profLower.includes(p.toLowerCase()))) {
+      delta += prefs.bonusProfWeight ?? 25;
+    }
+  }
+
+  // 3. Mandatory prerequisite chain score
+  // A course earns this bonus if it is a required/offeredOnce prerequisite AND
+  // none of the courses it unlocks are already covered by the current selection.
+  if (prefs.mandatoryChainScore) {
+    const ruleCode = et.academicRulesCode ?? et.code;
+    const unlocksOther = (prerequisiteForMap.get(ruleCode) ?? []).length > 0;
+    const isRequired = requiredCodes.has(ruleCode) || et.isGraduationRequired;
+    if (isRequired && unlocksOther) {
+      // Check if the chain is currently at risk (none of the unlocked courses
+      // are already in the selection)
+      const unlocked = prerequisiteForMap.get(ruleCode) ?? [];
+      const chainCovered = unlocked.some(uCode =>
+        current.some(c => (c.academicRulesCode ?? c.code) === uCode)
+      );
+      if (!chainCovered) {
+        delta += prefs.mandatoryChainScore;
+      }
+    }
+  }
+
+  return delta;
 }
 
 // ─── Backtracking Engine ──────────────────────────────────────────────────────
@@ -186,10 +318,14 @@ interface PlanConfig {
  * 1. Sort candidates by scorer desc (greedy order).
  * 2. Pick first non-conflicting candidate that improves or maintains score.
  * 3. Backtrack if credit target not reachable.
+ *
+ * @param prefs   Optional user scheduling preferences (early-morning penalty,
+ *                preferred-professor bonus, mandatory-chain score).
  */
 function selectCourses(
   pool: EverytimeCourse[],
   config: PlanConfig,
+  prefs: PlannerPreferences = {},
 ): EverytimeCourse[] {
   // Deduplicate pool by name → keep best-rated section per course
   const byName = uniqueByName(pool);
@@ -199,12 +335,17 @@ function selectCourses(
     deduped.push(best);
   }
 
-  // Sort by config
-  const sorted = [...deduped].sort(config.sort);
+  // Sort by config (preference delta added to base score for sort order)
+  const scored = deduped.map(c => ({
+    course: c,
+    baseScore: config.scorer(c, []) + preferenceScore(c, prefs, []),
+  }));
+  scored.sort((a, b) => b.baseScore - a.baseScore);
+  const sorted = scored.map(s => s.course);
 
   const selected: EverytimeCourse[] = [];
 
-  // Force-include required courses first
+  // Force-include required courses first (these ignore preferences)
   if (config.forceIncludeCodes) {
     for (const code of config.forceIncludeCodes) {
       const course = sorted.find(c => c.academicRulesCode === code || c.code === code);
@@ -214,13 +355,18 @@ function selectCourses(
     }
   }
 
-  // Greedy fill up to max credits
+  // Greedy fill up to max credits, applying preference modifiers live
   for (const candidate of sorted) {
     if (selected.includes(candidate)) continue;
     const cur = totalCredits(selected);
     if (cur >= config.targetCredits.max) break;
     if (cur + candidate.credits > config.targetCredits.max) continue;
     if (hasTimeConflict(candidate, selected)) continue;
+
+    // Re-evaluate with current selection for chain-risk awareness
+    const liveScore = config.scorer(candidate, selected) + preferenceScore(candidate, prefs, selected);
+    if (liveScore < -50) continue; // hard veto: extremely penalised course
+
     selected.push(candidate);
   }
 
@@ -306,14 +452,14 @@ const PLAN_CONFIGS: PlanConfig[] = [
 // ─── Main Export ──────────────────────────────────────────────────────────────
 
 /**
- * Generate all 4 scenario plans from everytime-raw.json.
- * Returns EngineResult[] ready for TimetableGrid display.
+ * Internal plan builder shared between generateAllPlans and
+ * generateAllPlansWithPreferences.
  */
-export function generateAllPlans(): EngineResult[] {
+function buildAllPlans(prefs: PlannerPreferences = {}): EngineResult[] {
   const pool = everytimeRaw.courses as EverytimeCourse[];
 
   return PLAN_CONFIGS.map((config) => {
-    const selected = selectCourses(pool, config);
+    const selected = selectCourses(pool, config, prefs);
     const active = activeDays(selected);
     const free = ALL_DAYS.filter(d => !active.has(d));
     const credits = totalCredits(selected);
@@ -337,9 +483,130 @@ export function generateAllPlans(): EngineResult[] {
 }
 
 /**
+ * Generate all 4 scenario plans from everytime-raw.json.
+ * Returns EngineResult[] ready for TimetableGrid display.
+ */
+export function generateAllPlans(): EngineResult[] {
+  return buildAllPlans();
+}
+
+/**
+ * Generate all 4 scenario plans with user-defined scheduling preferences.
+ *
+ * @example
+ * generateAllPlansWithPreferences({
+ *   penaltyEarlyMorning: -20,   // avoid 09:00 classes
+ *   bonusPreferredProfs: ["김철수"],
+ *   mandatoryChainScore: 60,    // protect prerequisite chains
+ * });
+ */
+export function generateAllPlansWithPreferences(prefs: PlannerPreferences): EngineResult[] {
+  return buildAllPlans(prefs);
+}
+
+/**
  * Generate a single plan by ID.
  */
 export function generatePlan(planId: "A" | "B" | "C" | "D"): EngineResult | null {
   const all = generateAllPlans();
   return all.find(p => p.planId === planId) ?? null;
+}
+
+// ─── Fallback / Alternate-Rank Plan ───────────────────────────────────────────
+
+/**
+ * Extended EngineResult that identifies which course was swapped out in
+ * favour of a lower-risk alternative.
+ */
+export interface FallbackResult extends EngineResult {
+  /** The Plan A course that was identified as highest-competition-risk */
+  swappedOut: Course;
+  /** The replacement course chosen by the alternate-rank algorithm */
+  swappedIn: Course;
+  /** Human-readable reason for the swap */
+  fallbackReason: string;
+}
+
+/**
+ * 대체 순위 기반 알고리즘 — Alternate-Rank Fallback Generator
+ *
+ * Algorithm:
+ * 1. Take Plan A's selected EverytimeCourse list.
+ * 2. Score each course by "competition risk":
+ *    - Low addedCount + low rating = high risk (many students compete, low quality)
+ *    - Required/offeredOnce courses are protected from swapping.
+ * 3. Identify the single riskiest NON-required course.
+ * 4. Remove it. From the remaining pool (excluding Plan A courses), find the
+ *    best non-conflicting replacement with maximum (rating + addedCount/100).
+ * 5. Return the modified plan with swap metadata.
+ *
+ * If all courses are required or no valid substitute exists, returns null.
+ */
+export function generateFallbackPlan(prefs: PlannerPreferences = {}): FallbackResult | null {
+  const pool = everytimeRaw.courses as EverytimeCourse[];
+
+  // --- Step 1: Run Plan A to get the primary selection ---
+  const planAConfig = PLAN_CONFIGS.find(c => c.planId === "A")!;
+  const planASelected = selectCourses(pool, planAConfig, prefs);
+  if (planASelected.length === 0) return null;
+
+  // --- Step 2: Score each Plan A course by competition risk ---
+  // Risk score: lower addedCount = higher risk; ignore required/offeredOnce
+  const swappableCourses = planASelected.filter(c => {
+    const ruleCode = c.academicRulesCode ?? c.code;
+    return !requiredCodes.has(ruleCode) && !c.isGraduationRequired;
+  });
+  if (swappableCourses.length === 0) return null;
+
+  // Sort by risk descending (lowest addedCount = highest risk first)
+  const ranked = [...swappableCourses].sort(
+    (a, b) => (a.addedCount - b.addedCount) || (a.rating - b.rating)
+  );
+  const riskyCourse = ranked[0];
+
+  // --- Step 3: Build remaining selection (Plan A minus risky course) ---
+  const remaining = planASelected.filter(c => c.code !== riskyCourse.code);
+  const remainingCodes = new Set(remaining.map(c => c.code));
+
+  // --- Step 4: Find best substitute ---
+  // Candidate pool: anything NOT already in Plan A and not time-conflicting
+  const candidates = pool
+    .filter(c => !remainingCodes.has(c.code) && c.code !== riskyCourse.code)
+    .filter(c => !hasTimeConflict(c, remaining))
+    .filter(c => c.credits <= (planAConfig.targetCredits.max - totalCredits(remaining)))
+    // Apply preference modifiers
+    .map(c => ({
+      course: c,
+      score: c.rating * 10 + Math.log10(c.addedCount + 1) * 8
+             + preferenceScore(c, prefs, remaining),
+    }))
+    .sort((a, b) => b.score - a.score);
+
+  if (candidates.length === 0) return null;
+  const substitute = candidates[0].course;
+
+  // --- Step 5: Build fallback EngineResult ---
+  const fallbackSelected = [...remaining, substitute];
+  const active = activeDays(fallbackSelected);
+  const free = ALL_DAYS.filter(d => !active.has(d));
+  const credits = totalCredits(fallbackSelected);
+  const rating = avgRating(fallbackSelected);
+  const score = free.length * 10 + rating * 5 + (credits >= 15 ? 5 : 0);
+
+  return {
+    planId: "A",
+    label: "안전 플랜 (대체)",
+    description: `Plan A에서 경쟁률 위험 과목(${riskyCourse.name})을 ${substitute.name}(으)로 대체한 최소 리스크 버전`,
+    emoji: "🛡️↔",
+    courses: fallbackSelected.map(toAppCourse),
+    totalCredits: credits,
+    avgRating: Math.round(rating * 10) / 10,
+    freeDays: free,
+    score,
+    swappedOut: toAppCourse(riskyCourse),
+    swappedIn: toAppCourse(substitute),
+    fallbackReason:
+      `${riskyCourse.name}(수강신청 경쟁률 위험: 에브리타임 추가수 ${riskyCourse.addedCount}명, 평점 ${riskyCourse.rating}) → ` +
+      `${substitute.name}(평점 ${substitute.rating}, 추가수 ${substitute.addedCount}명)으로 대체`,
+  };
 }

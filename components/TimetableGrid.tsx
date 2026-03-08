@@ -78,14 +78,34 @@ function safeParseTime(raw?: unknown): number | null {
   }
 }
 
+// ─── Year-based visual config ─────────────────────────────────────────────────
+// Codes that are 2nd-year critical required courses — get a glow highlight.
+const CRITICAL_REQUIRED_CODES = new Set(["EO203", "EO209", "EO201", "EO211", "EO212"]);
+
+/**
+ * Derive recommended year from EO code pattern.
+ * EO1xx → 1, EO2xx → 2, EO3xx → 3, EO4xx → 4.
+ */
+function deriveCourseYear(code?: string, recommendedYear?: number): number | null {
+  if (recommendedYear != null) return recommendedYear;
+  if (!code) return null;
+  const m = code.match(/^EO(\d)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 interface CourseBlock {
   planIdx: number;
   name: string;
+  code?: string;
   credits?: number;
   req?: string;
   periodIdx: number | null; // null = no time info, stack from top
   virtual?: boolean;        // true = synthetic time assigned by generateVirtualTimes
   retake?: boolean;         // true = 재수강 — highlighted with rose left-border
+  /** v2: derived academic year (1~4) for visual treatment */
+  courseYear?: number | null;
+  /** v2: true = 2nd-year critical required course — glow border */
+  isCriticalRequired?: boolean;
 }
 
 interface Props {
@@ -117,15 +137,24 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
         const days = safeParseDay(c?.day);
         if (days.length === 0) return;
         const periodIdx = safeParseTime(c?.time);
+        // v2: derive year & criticality from Course fields or code pattern
+        const cRec = (c as { recommendedYear?: number });
+        const courseYear = deriveCourseYear(c?.code, cRec.recommendedYear);
+        const isCriticalRequired =
+          (c?.code ? CRITICAL_REQUIRED_CODES.has(c.code) : false) ||
+          (c?.requirement?.includes("필수") && courseYear === 2);
         days.forEach((d) => {
           g[d].push({
-            planIdx:  activePlan === -1 ? pi : activePlan + colorOffset,
-            name:     c?.name ?? "과목명 없음",
-            credits:  c?.credits,
-            req:      c?.requirement,
+            planIdx:          activePlan === -1 ? pi : activePlan + colorOffset,
+            name:             c?.name ?? "과목명 없음",
+            code:             c?.code,
+            credits:          c?.credits,
+            req:              c?.requirement,
             periodIdx,
-            virtual:  isVirtual,
-            retake:   isRetake,
+            virtual:          isVirtual,
+            retake:           isRetake,
+            courseYear,
+            isCriticalRequired,
           });
         });
       });
@@ -242,16 +271,43 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
                             style={{ height: 52 }}>
                           {items.map((item, j) => {
                             const c = PLAN_COLORS[item.planIdx % PLAN_COLORS.length];
+                            // v2: year-based visual treatment
+                            const isYear1 = item.courseYear === 1;
+                            const isCritical2 = item.isCriticalRequired && !isYear1;
                             return (
-                              <div key={j} className={cn(
-                                "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center relative",
-                                c.bg, c.text, c.border,
-                                item.virtual && "opacity-60 border-dashed",
-                                item.retake  && "border-l-[3px] border-l-rose-500 dark:border-l-rose-400",
-                              )}>
+                              <div key={j}
+                                className={cn(
+                                  "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center relative transition-all",
+                                  c.bg, c.text, c.border,
+                                  item.virtual && "opacity-60 border-dashed",
+                                  item.retake  && "border-l-[3px] border-l-rose-500 dark:border-l-rose-400",
+                                  // Year-1: already-done / pass candidates — dim
+                                  isYear1 && !item.retake && "opacity-40 grayscale saturate-0",
+                                  // Year-2 critical required: glowing indigo highlight
+                                  isCritical2 && [
+                                    "ring-2 ring-indigo-400/80 dark:ring-indigo-400",
+                                    "shadow-[0_0_10px_rgba(99,102,241,0.55)]",
+                                    "border-indigo-300 dark:border-indigo-500",
+                                  ].join(" "),
+                                )}
+                                title={isCritical2 ? "2학년 필수 과목 — 졸업 critical path" : isYear1 ? "1학년 과목 (이미 이수했거나 패스 권장)" : undefined}
+                              >
+                                {/* Retake badge */}
                                 {item.retake && (
                                   <span className="absolute top-0.5 right-0.5 text-[8px] font-bold text-rose-500 dark:text-rose-400 leading-none">
                                     재수강
+                                  </span>
+                                )}
+                                {/* Critical-2 glow badge */}
+                                {isCritical2 && (
+                                  <span className="absolute top-0.5 right-0.5 text-[8px] font-bold text-indigo-500 dark:text-indigo-300 leading-none">
+                                    ★필수
+                                  </span>
+                                )}
+                                {/* Year-1 dim label */}
+                                {isYear1 && (
+                                  <span className="absolute top-0.5 left-0.5 text-[8px] text-slate-400 dark:text-slate-500 leading-none">
+                                    1학년
                                   </span>
                                 )}
                                 <p className="m-0 font-semibold truncate">
@@ -302,6 +358,10 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
           )}
           <p className="text-[11px] text-rose-400 dark:text-rose-500 m-0">
             ● 재수강 과목은 모든 플랜에서 최우선 배치됩니다.
+          </p>
+          <p className="text-[11px] text-slate-400 dark:text-slate-500 m-0">
+            <span className="opacity-50">■</span> 흐린 칸 = 1학년 과목 (이수 완료/패스 권장) &nbsp;·&nbsp;
+            <span className="text-indigo-400">★</span> 테두리 = 2학년 졸업 필수 (critical path)
           </p>
         </div>
       )}

@@ -14,7 +14,10 @@ import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
 import { RESULT_DATA_VERSION } from "@/hooks/useStudyPlan";
 import { detectGraduationRisk, parseStudentGrade } from "@/lib/graduation-risk";
 import GraduationRiskBanner from "@/components/GraduationRiskBanner";
-import { generateAllPlans, type EngineResult } from "@/lib/planner-engine";
+import { generateAllPlans, generateAllPlansWithPreferences, generateFallbackPlan, type EngineResult, type FallbackResult } from "@/lib/planner-engine";
+import RoadmapSection from "@/components/RoadmapSection";
+import { PlannerProvider, usePlannerContext } from "@/lib/planner-context";
+import UniversalUploader, { type PdfKnowledge } from "@/components/upload/UniversalUploader";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -255,9 +258,128 @@ function EnginePlanSection({
   );
 }
 
-// ─── Page ─────────────────────────────────────────────────────────────────────
+// ─── Fallback swap banner ─────────────────────────────────────────────────────
 
-export default function PlanPage() {
+function FallbackSwapBanner({ fallback }: { fallback: FallbackResult }) {
+  const [dismissed, setDismissed] = useState(false);
+  if (dismissed) return null;
+  return (
+    <div className="flex items-start gap-3 px-4 py-3 mb-4 rounded-2xl border border-amber-200 dark:border-amber-800 bg-amber-50/80 dark:bg-amber-950/40 backdrop-blur-[12px]">
+      <span className="text-lg shrink-0 mt-0.5">🔀</span>
+      <div className="flex-1 min-w-0">
+        <p className="m-0 text-[12px] font-bold text-amber-800 dark:text-amber-300 mb-0.5">
+          대체 순위 알고리즘 적용
+        </p>
+        <p className="m-0 text-[11px] text-amber-700 dark:text-amber-400">
+          {fallback.fallbackReason}
+        </p>
+      </div>
+      <button onClick={() => setDismissed(true)} className="shrink-0 text-amber-400 hover:text-amber-600 dark:hover:text-amber-200 p-0.5 transition-colors" aria-label="닫기">
+        <svg className="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
+      </button>
+    </div>
+  );
+}
+
+// ─── Planner settings panel (uploader + preferences) ─────────────────────────
+
+function PlannerSettingsPanel({ onRegenerate }: { onRegenerate: () => void }) {
+  const { setPdfKnowledge, setPreferences, preferences, hasPdf } = usePlannerContext();
+  const [open, setOpen] = useState(false);
+
+  return (
+    <div className="mb-6 rounded-2xl border border-slate-200 dark:border-slate-700 bg-white/80 dark:bg-slate-900/80 backdrop-blur-[12px] overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setOpen(v => !v)}
+        className="w-full flex items-center justify-between px-5 py-3.5 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">
+            ⚙️ 플랜 설정 — PDF 편람 / 희망 조건
+          </span>
+          {hasPdf && (
+            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
+              PDF 로드됨
+            </span>
+          )}
+        </div>
+        <svg className={["w-4 h-4 text-slate-400 transition-transform", open ? "rotate-180" : ""].join(" ")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
+      </button>
+
+      {open && (
+        <div className="px-5 pb-5 space-y-5 border-t border-slate-200 dark:border-slate-700 pt-4">
+          {/* Uploader */}
+          <div>
+            <p className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wider">
+              파일 업로드
+            </p>
+            <UniversalUploader
+              onPdfLoaded={(k: PdfKnowledge) => {
+                setPdfKnowledge(k);
+                // Auto-boost mandatoryChainScore when PDF is loaded
+                setPreferences(prev => ({ ...prev, mandatoryChainScore: 60 }));
+              }}
+            />
+          </div>
+
+          {/* Preferences */}
+          <div>
+            <p className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wider">
+              희망/기피 조건
+            </p>
+            <div className="flex flex-wrap gap-3">
+              {/* Early morning toggle */}
+              <label className="flex items-center gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={(preferences.penaltyEarlyMorning ?? 0) < 0}
+                  onChange={e => setPreferences(prev => ({
+                    ...prev,
+                    penaltyEarlyMorning: e.target.checked ? -25 : 0,
+                  }))}
+                  className="w-3.5 h-3.5 rounded accent-indigo-500"
+                />
+                <span className="text-[12px] text-slate-600 dark:text-slate-300">🌅 1교시 기피</span>
+              </label>
+
+              {/* Preferred professor input */}
+              <div className="flex items-center gap-2">
+                <span className="text-[12px] text-slate-600 dark:text-slate-300 shrink-0">👨‍🏫 선호 교수:</span>
+                <input
+                  type="text"
+                  placeholder="교수명 입력"
+                  defaultValue={(preferences.bonusPreferredProfs ?? []).join(",")}
+                  onBlur={e => {
+                    const names = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                    setPreferences(prev => ({ ...prev, bonusPreferredProfs: names }));
+                  }}
+                  className="px-2 py-1 text-[12px] rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 w-36 focus:outline-none focus:ring-1 focus:ring-indigo-400"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Re-generate button */}
+          <button
+            type="button"
+            onClick={() => { setOpen(false); onRegenerate(); }}
+            className="w-full py-2.5 rounded-xl text-[13px] font-bold bg-indigo-600 hover:bg-indigo-500 text-white transition-all shadow-[0_4px_10px_rgba(99,102,241,0.3)]"
+          >
+            조건 적용 후 플랜 재생성
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Page (inner, consumes context) ──────────────────────────────────────────
+
+function PlanPageInner() {
+  // ── Context (PDF knowledge + preferences) ─────────────────────────────────
+  const { preferences, pdfKnowledge } = usePlannerContext();
+
   const [result, setResult] = useState<StudyPlanResult | null>(null);
   // mounted=false → server renders only <PlanPageSkeleton />, zero hydration mismatch
   const [mounted, setMounted] = useState(false);
@@ -269,10 +391,15 @@ export default function PlanPage() {
   const [studentInfo, setStudentInfo] = useState("");
   /** Ref for the capturable plan content area (card + timetable) */
   const planContentRef = useRef<HTMLDivElement>(null);
+  /** Ref for the roadmap section (for full-page PDF export) */
+  const roadmapRef = useRef<HTMLDivElement>(null);
   /** Engine-generated plans from everytime-raw.json (kyungsung-sw only) */
   const [enginePlans, setEnginePlans] = useState<EngineResult[]>([]);
   const [activeEngineIdx, setActiveEngineIdx] = useState(0);
   const [engineView, setEngineView] = useState<"card" | "timetable">("timetable");
+  /** Fallback plan from alternate-rank algorithm */
+  const [fallbackPlan, setFallbackPlan] = useState<FallbackResult | null>(null);
+  const [showFallback, setShowFallback] = useState(false);
 
   useEffect(() => {
     const stored = localStorage.getItem("smartstudy_result");
@@ -323,11 +450,24 @@ export default function PlanPage() {
     if (uid === "kyungsung-sw") {
       try {
         setEnginePlans(generateAllPlans());
+        // Generate alternate-rank fallback plan
+        const fb = generateFallbackPlan();
+        setFallbackPlan(fb);
       } catch { /* ignore — engine is best-effort */ }
     }
 
     setMounted(true);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Re-generate engine plans when preferences change ──────────────────────
+  function regenerateWithPreferences() {
+    try {
+      setEnginePlans(generateAllPlansWithPreferences(preferences));
+      const fb = generateFallbackPlan(preferences);
+      setFallbackPlan(fb);
+    } catch { /* ignore */ }
+  }
 
   // Server send only skeleton — full content renders after client mount
   if (!mounted) return <PlanPageSkeleton />;
@@ -399,11 +539,18 @@ export default function PlanPage() {
   ];
 
   const handlePdfDownload = async () => {
-    if (!planContentRef.current || pdfLoading) return;
+    if (pdfLoading) return;
+    const elements: HTMLElement[] = [];
+    if (planContentRef.current) elements.push(planContentRef.current);
+    if (roadmapRef.current) elements.push(roadmapRef.current);
+    if (elements.length === 0) return;
     setPdfLoading(true);
     try {
       const label = activePlan?.label ?? `Plan ${String.fromCharCode(65 + activePlanIdx)}`;
-      await downloadAllPdf([planContentRef.current], `smartstudy-${label.toLowerCase().replace(/\s+/g, "-")}.pdf`);
+      await downloadAllPdf(
+        elements,
+        `smartstudy-${label.toLowerCase().replace(/\s+/g, "-")}.pdf`,
+      );
     } finally {
       setPdfLoading(false);
     }
@@ -474,9 +621,18 @@ export default function PlanPage() {
           </div>
         </div>
 
-        {/* Graduation risk banner — shown when kyungsung-sw + missing required courses */}
+        {/* ── Planner settings (PDF upload + preferences) ───────────── */}
+        {universityId === "kyungsung-sw" && (
+          <PlannerSettingsPanel onRegenerate={regenerateWithPreferences} />
+        )}
+
+        {/* Graduation risk banner — dynamic PDF diff when pdfKnowledge is set */}
         {graduationRisk && graduationRisk.severity !== "safe" && (
-          <GraduationRiskBanner risk={graduationRisk} />
+          <GraduationRiskBanner
+            risk={graduationRisk}
+            pdfExtractedCourses={pdfKnowledge?.graduationRequired}
+            plannedCourseCodes={plans.flatMap(p => (p.courses ?? []).map(c => c.code ?? c.name))}
+          />
         )}
 
         {/* Plan A~D — tabbed single-plan view */}
@@ -557,7 +713,7 @@ export default function PlanPage() {
           </section>
         )}
 
-        {/* Year plan */}
+        {/* Year plan (AI 생성) */}
         {result.yearPlan && <YearPlanView yearPlan={result.yearPlan} />}
 
         {/* Raw response fallback */}
@@ -575,27 +731,74 @@ export default function PlanPage() {
         {/* Engine plans section (everytime-based, kyungsung-sw only) */}
         {enginePlans.length > 0 && (
           <section className="mt-10">
-            <div className="flex items-center gap-2 mb-4">
+            <div className="flex items-center gap-2 mb-2">
               <span className="text-base font-bold text-black dark:text-white">에브리타임 기반 수강신청 플랜</span>
               <span className="px-2 py-0.5 rounded-full bg-indigo-100 dark:bg-indigo-900/60 text-indigo-700 dark:text-indigo-300 text-[11px] font-semibold">자동생성</span>
             </div>
-            <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-4 -mt-2">
+            <p className="text-[12px] text-gray-500 dark:text-gray-400 mb-4">
               에브리타임 강의평가 데이터 + academic-rules.json 기반 백트래킹 엔진이 자동 생성
             </p>
+
+            {/* Fallback plan toggle */}
+            {fallbackPlan && (
+              <div className="mb-4">
+                <FallbackSwapBanner fallback={fallbackPlan} />
+                <label className="flex items-center gap-2 cursor-pointer mb-4">
+                  <input
+                    type="checkbox"
+                    checked={showFallback}
+                    onChange={e => setShowFallback(e.target.checked)}
+                    className="w-3.5 h-3.5 rounded accent-amber-500"
+                  />
+                  <span className="text-[12px] text-slate-600 dark:text-slate-300">
+                    대체 플랜 보기 (경쟁률 위험 과목 자동 교체)
+                  </span>
+                </label>
+              </div>
+            )}
+
             <EnginePlanSection
-              enginePlans={enginePlans}
+              enginePlans={showFallback && fallbackPlan
+                ? [fallbackPlan as EngineResult, ...enginePlans.slice(1)]
+                : enginePlans}
               activeIdx={activeEngineIdx}
               setActiveIdx={setActiveEngineIdx}
               view={engineView}
               setView={setEngineView}
-              activePlan={enginePlans[activeEngineIdx] ?? enginePlans[0]}
+              activePlan={showFallback && fallbackPlan
+                ? (activeEngineIdx === 0 ? (fallbackPlan as EngineResult) : enginePlans[activeEngineIdx])
+                : (enginePlans[activeEngineIdx] ?? enginePlans[0])}
             />
           </section>
+        )}
+
+        {/* ── 1년 로드맵 + 위험도 ───────────────────────────────────── */}
+        {universityId === "kyungsung-sw" && (
+          <div ref={roadmapRef}>
+            <RoadmapSection
+              plannedCourseCodes={[
+                ...plans.flatMap(p => (p.courses ?? []).map(c => c.code ?? c.name)),
+                ...enginePlans.flatMap(ep => ep.courses.map(c => c.code ?? c.name)),
+              ].filter(Boolean) as string[]}
+              currentYear={studentYear}
+              currentSemester={studentSemester}
+            />
+          </div>
         )}
 
         {/* 편람 근거 데이터 */}
         <CurriculumSourceFooter />
       </div>
     </main>
+  );
+}
+
+// ─── Page (outer — wraps with PlannerProvider) ────────────────────────────────
+
+export default function PlanPage() {
+  return (
+    <PlannerProvider>
+      <PlanPageInner />
+    </PlannerProvider>
   );
 }

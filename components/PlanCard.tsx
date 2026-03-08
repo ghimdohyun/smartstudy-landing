@@ -22,6 +22,20 @@ function reqBadge(req: string): string {
   return "bg-emerald-50 text-emerald-700 border border-emerald-200";
 }
 
+// v2: codes that get a glow highlight (2nd-year critical required)
+const CRITICAL_CODES_CARD = new Set(["EO203", "EO209", "EO201", "EO211", "EO212"]);
+
+/**
+ * Derive academic year from EO code pattern for card visual treatment.
+ * EO1xx → 1, EO2xx → 2, etc.
+ */
+function deriveCardYear(code?: string, recommendedYear?: number): number | null {
+  if (recommendedYear != null) return recommendedYear;
+  if (!code) return null;
+  const m = code.match(/^EO(\d)/i);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 function downloadPlan(plan: StudyPlan, label: string) {
   const lines = [
     `# ${label} — ${plan.strategy ?? ""}`,
@@ -80,35 +94,83 @@ export default function PlanCard({ plan, index }: Props) {
         {/* Course list */}
         {(plan.courses ?? []).length > 0 && (
           <ul className="space-y-1.5 flex-1">
-            {(plan.courses ?? []).map((c, i) => (
-              <li key={i} className="flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg bg-slate-50 hover:bg-slate-100 transition-colors">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13px] font-semibold text-slate-800 truncate">{c.name}</p>
-                  <div className="flex flex-wrap gap-1 mt-0.5">
-                    {c.code && (
-                      <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-100 text-slate-500 tracking-wide border border-slate-200">
-                        {c.code}
-                      </span>
-                    )}
-                    {c.requirement && (
-                      <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded", reqBadge(c.requirement))}>
-                        {c.requirement}
-                      </span>
-                    )}
-                  </div>
-                </div>
-                <div className="flex flex-col items-end gap-1 shrink-0">
-                  {c.credits !== undefined && (
-                    <span className="text-[11px] font-mono font-bold" style={{ color: meta.accent }}>
-                      {c.credits}학점
+            {(plan.courses ?? []).map((c, i) => {
+              // v2: year-based visual treatment
+              const cRec = c as { recommendedYear?: number };
+              const courseYear = deriveCardYear(c.code, cRec.recommendedYear);
+              const isYear1 = courseYear === 1;
+              const isCritical2 = c.code ? CRITICAL_CODES_CARD.has(c.code) : (c.requirement?.includes("필수") && courseYear === 2);
+
+              return (
+                <li
+                  key={i}
+                  className={cn(
+                    "flex items-start justify-between gap-2 px-2.5 py-2 rounded-lg transition-all relative",
+                    // Year-1: dimmed
+                    isYear1
+                      ? "bg-slate-50/50 opacity-45 grayscale hover:opacity-70 hover:grayscale-0"
+                      : "bg-slate-50 hover:bg-slate-100",
+                    // Year-2 critical: glowing indigo ring
+                    isCritical2 && [
+                      "ring-2 ring-indigo-300/70 dark:ring-indigo-500/60",
+                      "shadow-[0_0_8px_rgba(99,102,241,0.30)]",
+                      "bg-indigo-50/60 hover:bg-indigo-50",
+                    ].join(" "),
+                  )}
+                  title={
+                    isCritical2
+                      ? "2학년 졸업 필수 과목 — 미이수 시 3학년 트랙 봉쇄"
+                      : isYear1
+                      ? "1학년 과목 — 이미 이수했거나 패스 가능"
+                      : undefined
+                  }
+                >
+                  {/* Critical-2 glow indicator */}
+                  {isCritical2 && (
+                    <span className="absolute -top-px -right-px text-[8px] font-bold bg-indigo-500 text-white px-1 py-px rounded-bl-md rounded-tr-lg leading-none">
+                      ★필수
                     </span>
                   )}
-                  {c.day && (
-                    <span className="text-[10px] text-slate-400 font-mono">{c.day}</span>
+                  {/* Year-1 dim indicator */}
+                  {isYear1 && (
+                    <span className="absolute -top-px -right-px text-[8px] text-slate-400 bg-slate-100 px-1 py-px rounded-bl-md rounded-tr-lg leading-none">
+                      1학년
+                    </span>
                   )}
-                </div>
-              </li>
-            ))}
+
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[13px] font-semibold text-slate-800 truncate">{c.name}</p>
+                    <div className="flex flex-wrap gap-1 mt-0.5">
+                      {c.code && (
+                        <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-100 text-slate-500 tracking-wide border border-slate-200">
+                          {c.code}
+                        </span>
+                      )}
+                      {c.requirement && (
+                        <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded", reqBadge(c.requirement))}>
+                          {c.requirement}
+                        </span>
+                      )}
+                      {(c as { isPrerequisite?: boolean }).isPrerequisite && (
+                        <span className="text-[9px] px-1 py-px rounded bg-violet-50 text-violet-600 border border-violet-200 font-semibold">
+                          선수
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    {c.credits !== undefined && (
+                      <span className="text-[11px] font-mono font-bold" style={{ color: meta.accent }}>
+                        {c.credits}학점
+                      </span>
+                    )}
+                    {c.day && (
+                      <span className="text-[10px] text-slate-400 font-mono">{c.day}</span>
+                    )}
+                  </div>
+                </li>
+              );
+            })}
           </ul>
         )}
 
