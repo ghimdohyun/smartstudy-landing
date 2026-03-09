@@ -1,7 +1,6 @@
 // Site header: sticky glassmorphism, responsive at 640 px, dark mode aware
 "use client";
 
-import Link from "next/link";
 import Image from "next/image";
 import { ModeToggle } from "@/components/mode-toggle";
 import { cn } from "@/lib/utils";
@@ -37,9 +36,15 @@ export default function Header() {
       )}
     >
       <div className="max-w-[1100px] mx-auto px-5 flex items-center h-[60px] gap-2">
-        {/* Logo */}
-        <Link
+        {/* Logo — hard navigation clears plan state for a fresh start */}
+        <a
           href="/"
+          onClick={() => {
+            try {
+              localStorage.removeItem("smartstudy_result");
+              localStorage.removeItem("smartstudy_last_input");
+            } catch { /* ignore */ }
+          }}
           className="flex items-center gap-2 mr-2 shrink-0 no-underline"
         >
           <Image
@@ -53,7 +58,7 @@ export default function Header() {
           <span className="text-[15px] font-bold text-gray-900 dark:text-gray-100 tracking-tight whitespace-nowrap">
             Dream Helixion
           </span>
-        </Link>
+        </a>
 
         {/* Desktop nav — hidden below 640 px via .dh-nav in globals.css */}
         <nav className="dh-nav items-center flex-1">

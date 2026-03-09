@@ -46,9 +46,9 @@ export function downloadCSV(result: StudyPlanResult, filename: string): void {
 // ─── PDF Export (html2canvas + jsPDF) ─────────────────────────────────────────
 
 /**
- * Capture each provided HTMLElement with html2canvas (scale=2 for retina), then
- * compose them into a single multi-page A4 PDF using jsPDF.
- * Each element gets its own page. White background is enforced for dark-mode safety.
+ * Capture each HTMLElement with html2canvas (scale=2, white bg) then compose into
+ * an A4 multi-page PDF. Tall elements are sliced across pages so text is never
+ * shrunk to illegibility.
  */
 export async function downloadAllPdf(
   elements: HTMLElement[],
@@ -61,9 +61,11 @@ export async function downloadAllPdf(
     import("jspdf"),
   ]);
 
-  const A4_W = 210; // mm
-  const A4_H = 297; // mm
-  const MARGIN = 10; // mm
+  const A4_W = 210;   // mm
+  const A4_H = 297;   // mm
+  const MARGIN = 10;  // mm
+  const USABLE_W = A4_W - MARGIN * 2; // 190 mm
+  const USABLE_H = A4_H - MARGIN * 2; // 277 mm
 
   const doc = new jsPDF({ orientation: "portrait", unit: "mm", format: "a4" });
   let firstPage = true;
@@ -73,25 +75,36 @@ export async function downloadAllPdf(
       scale: 2,
       backgroundColor: "#ffffff",
       useCORS: true,
+      allowTaint: true,
       logging: false,
     });
 
-    const imgData = canvas.toDataURL("image/png");
-    const usableW = A4_W - MARGIN * 2;
-    const usableH = A4_H - MARGIN * 2;
+    // Pixels per mm when the canvas is fitted to usable page width
+    const pxPerMm = canvas.width / USABLE_W;
+    // How many canvas-px fit in one A4 page height
+    const sliceHeightPx = Math.floor(USABLE_H * pxPerMm);
+    const pageCount = Math.ceil(canvas.height / sliceHeightPx);
 
-    // Scale canvas to fit within usable area (maintain aspect ratio)
-    const ratio = canvas.width / canvas.height;
-    let imgW = usableW;
-    let imgH = usableW / ratio;
-    if (imgH > usableH) {
-      imgH = usableH;
-      imgW = usableH * ratio;
+    for (let page = 0; page < pageCount; page++) {
+      const srcY = page * sliceHeightPx;
+      const srcH = Math.min(sliceHeightPx, canvas.height - srcY);
+
+      // Create an off-screen canvas for this slice
+      const slice = document.createElement("canvas");
+      slice.width = canvas.width;
+      slice.height = srcH;
+      const ctx = slice.getContext("2d")!;
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, slice.width, slice.height);
+      ctx.drawImage(canvas, 0, srcY, canvas.width, srcH, 0, 0, canvas.width, srcH);
+
+      const sliceData = slice.toDataURL("image/png");
+      const sliceH = srcH / pxPerMm; // mm height of this slice
+
+      if (!firstPage) doc.addPage();
+      doc.addImage(sliceData, "PNG", MARGIN, MARGIN, USABLE_W, sliceH);
+      firstPage = false;
     }
-
-    if (!firstPage) doc.addPage();
-    doc.addImage(imgData, "PNG", MARGIN, MARGIN, imgW, imgH);
-    firstPage = false;
   }
 
   doc.save(filename);

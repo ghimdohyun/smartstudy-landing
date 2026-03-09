@@ -1,7 +1,7 @@
 // /plan page — glassmorphism dark mode, forced black text, Tailwind-based layout
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import type { StudyPlanResult } from "@/types";
@@ -469,6 +469,18 @@ function PlanPageInner() {
     } catch { /* ignore */ }
   }
 
+  // Hard-navigate to home and clear plan state so the main page starts fresh
+  const handleHomeNav = useCallback(() => {
+    try {
+      localStorage.removeItem("smartstudy_result");
+      localStorage.removeItem("smartstudy_last_input");
+    } catch { /* ignore */ }
+    window.location.href = "/";
+  }, []);
+
+  // Compute student grade early (needed for both engine-only and full result views)
+  const { year: studentYear, semester: studentSemester } = parseStudentGrade(studentInfo);
+
   // Server send only skeleton — full content renders after client mount
   if (!mounted) return <PlanPageSkeleton />;
 
@@ -481,7 +493,15 @@ function PlanPageInner() {
           <div className="max-w-[960px] mx-auto">
             <div className="flex items-start justify-between mb-7 gap-4 flex-wrap">
               <div>
-                <Link href="/" className="text-[13px] text-gray-500 dark:text-gray-400 no-underline hover:text-gray-700 dark:hover:text-gray-200 transition-colors">← 돌아가기</Link>
+                <button
+                  type="button"
+                  onClick={handleHomeNav}
+                  className="inline-flex items-center gap-1.5 text-[13px] text-gray-500 dark:text-gray-400 no-underline hover:text-gray-700 dark:hover:text-gray-200 transition-colors bg-transparent border-none cursor-pointer p-0"
+                >
+                  <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300">DH</span>
+                  <span className="font-semibold">Dream Helixion</span>
+                  <span className="opacity-50">← 메인으로</span>
+                </button>
                 <h1 className="text-2xl font-bold text-black dark:text-white mt-1.5 mb-1">수강신청 플랜 (에브리타임 기반)</h1>
                 <p className="text-[13px] text-gray-500 dark:text-gray-400 m-0">에브리타임 강의평가 데이터로 자동 생성된 Plan A~D</p>
               </div>
@@ -496,6 +516,11 @@ function PlanPageInner() {
               view={engineView}
               setView={setEngineView}
               activePlan={ep}
+            />
+            <RoadmapSection
+              plannedCourseCodes={(ep.courses ?? []).map(c => c.code ?? c.name).filter(Boolean) as string[]}
+              currentYear={studentYear}
+              currentSemester={studentSemester}
             />
           </div>
         </main>
@@ -524,7 +549,6 @@ function PlanPageInner() {
     typeof window !== "undefined"
       ? (localStorage.getItem("smartstudy_university") ?? "generic")
       : "generic";
-  const { year: studentYear, semester: studentSemester } = parseStudentGrade(studentInfo);
   const graduationRisk =
     universityId === "kyungsung-sw" && hasPlans
       ? detectGraduationRisk(plans, studentYear, studentSemester)
@@ -558,6 +582,23 @@ function PlanPageInner() {
 
   return (
     <main className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60">
+      {/* 경성대 수강신청 플로팅 버튼 */}
+      <a
+        href="https://sugang.ks.ac.kr"
+        target="_blank"
+        rel="noopener noreferrer"
+        className="fixed bottom-6 right-6 z-50 flex items-center gap-2 px-4 py-3 rounded-full
+                   bg-gradient-to-br from-indigo-600 to-violet-600
+                   text-white text-[13px] font-bold no-underline
+                   shadow-[0_4px_20px_rgba(99,102,241,0.45)]
+                   hover:shadow-[0_6px_28px_rgba(99,102,241,0.6)] hover:scale-105
+                   transition-all duration-200"
+        title="경성대학교 수강신청 시스템"
+      >
+        <span className="text-base leading-none">🎓</span>
+        경성대 수강신청 바로가기
+      </a>
+
       <div className="max-w-[960px] mx-auto">
 
         {/* Stripe upgrade success */}
@@ -588,12 +629,15 @@ function PlanPageInner() {
         {/* Page header */}
         <div className="flex items-start justify-between mb-7 gap-4 flex-wrap">
           <div>
-            <Link
-              href="/"
-              className="text-[13px] text-gray-500 dark:text-gray-400 no-underline hover:text-gray-700 dark:hover:text-gray-200 transition-colors"
+            <button
+              type="button"
+              onClick={handleHomeNav}
+              className="inline-flex items-center gap-1.5 text-[13px] text-gray-500 dark:text-gray-400 no-underline hover:text-gray-700 dark:hover:text-gray-200 transition-colors mb-1 bg-transparent border-none cursor-pointer p-0"
             >
-              ← 돌아가기
-            </Link>
+              <span className="text-[11px] font-bold px-1.5 py-0.5 rounded bg-indigo-100 dark:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300">DH</span>
+              <span className="font-semibold">Dream Helixion</span>
+              <span className="opacity-50">← 메인으로</span>
+            </button>
             <h1 className="text-2xl font-bold text-black dark:text-white mt-1.5 mb-1">
               수강 계획표
             </h1>
@@ -777,8 +821,10 @@ function PlanPageInner() {
           <div ref={roadmapRef}>
             <RoadmapSection
               plannedCourseCodes={[
-                ...plans.flatMap(p => (p.courses ?? []).map(c => c.code ?? c.name)),
-                ...enginePlans.flatMap(ep => ep.courses.map(c => c.code ?? c.name)),
+                // 현재 선택된 AI 플랜 과목만 반영 (전체 합산 X)
+                ...((activePlan?.courses ?? []).map(c => c.code ?? c.name)),
+                // 엔진 플랜에서도 현재 선택 탭 과목만 반영
+                ...((enginePlans[activeEngineIdx]?.courses ?? []).map(c => c.code ?? c.name)),
               ].filter(Boolean) as string[]}
               currentYear={studentYear}
               currentSemester={studentSemester}

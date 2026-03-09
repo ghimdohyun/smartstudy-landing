@@ -5,7 +5,8 @@
   "version": "2025",
   "graduationCredits": 130,
   "majorCredits": 48,
-  "codeSystem": "EO1xx=전공기초 / EO2xx~EO3xx=전공선택 / GE=교양",
+  "semesterMaxCredits": 19,
+  "codeSystem": "EO1xx=전공기초 / EO2xx~EO3xx=전공선택 / GE=교양 / QC·QA=2학년기초교양 / QY=전학년교양",
   "courses": [
     {
       "code": "EO101",
@@ -27,7 +28,7 @@
       "semesters": [1],
       "required": true,
       "offeredOnce": true,
-      "note": "알고리즘·AI 과목 선수 조건"
+      "note": "계산이론·AI 과목 선수 조건"
     },
     {
       "code": "EO103",
@@ -49,7 +50,7 @@
       "semesters": [2],
       "required": true,
       "offeredOnce": true,
-      "note": "알고리즘·DB 선수 과목 — 2학기만 개설"
+      "note": "SE669001로 2학년에도 개설됨 — 미이수 시 반드시 수강 필요"
     },
     {
       "code": "EO112",
@@ -75,15 +76,15 @@
     },
     {
       "code": "EO201",
-      "name": "알고리즘",
+      "name": "자바프로그래밍",
       "credits": 3,
-      "category": "전공선택",
+      "category": "전공기초",
       "year": 2,
       "semesters": [1],
-      "required": false,
-      "offeredOnce": true,
-      "prerequisites": ["EO111", "EO102"],
-      "note": "코딩테스트 및 취업 핵심 과목 — 1학기만 개설"
+      "required": true,
+      "offeredOnce": false,
+      "prerequisites": ["EO101", "EO112"],
+      "note": "2학년 1학기 전공기초 — 객체지향 심화·안드로이드·백엔드 과목 선수 조건. 에브리타임 EO201001(홍석희)/EO201002(최동한)"
     },
     {
       "code": "EO203",
@@ -94,7 +95,19 @@
       "semesters": [1],
       "required": true,
       "offeredOnce": true,
-      "note": "2학년 1학기 전공기초 필수 — 후속 전공선택 사실상 선수 조건. 미이수 시 3학년 전공 수강 불가"
+      "note": "2학년 1학기 전공기초 필수 — 후속 전공선택 사실상 선수 조건. 미이수 시 3학년 전공 수강 불가. 에브리타임 EO203001(지상문)"
+    },
+    {
+      "code": "EO204",
+      "name": "계산이론",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": false,
+      "prerequisites": ["EO102"],
+      "note": "이산수학 기반 계산이론 — 컴파일러·형식언어 선수 과목. 에브리타임 EO204001(강인수)"
     },
     {
       "code": "EO209",
@@ -105,19 +118,7 @@
       "semesters": [1],
       "required": true,
       "offeredOnce": true,
-      "note": "2학년 1학기 전공기초 필수 — 운영체제·서버 과목 선수 조건"
-    },
-    {
-      "code": "EO204",
-      "name": "데이터베이스",
-      "credits": 3,
-      "category": "전공선택",
-      "year": 2,
-      "semesters": [1],
-      "required": false,
-      "offeredOnce": false,
-      "prerequisites": ["EO111"],
-      "note": "웹·백엔드 트랙 필수 이수 권장"
+      "note": "2학년 1학기 전공기초 필수 — 운영체제·컴퓨터구조 선수 조건. 에브리타임 EO209001(최동한)"
     },
     {
       "code": "EO211",
@@ -167,6 +168,18 @@
       "note": "프론트엔드·풀스택 트랙"
     },
     {
+      "code": "EO302",
+      "name": "컴퓨터구조",
+      "credits": 3,
+      "category": "전공선택",
+      "year": 2,
+      "semesters": [1],
+      "required": false,
+      "offeredOnce": false,
+      "prerequisites": ["EO209"],
+      "note": "시스템·임베디드 트랙 — 에브리타임 SE668001(홍석희). 2학년 1학기 개설 확인"
+    },
+    {
       "code": "EO301",
       "name": "인공지능",
       "credits": 3,
@@ -179,18 +192,6 @@
       "note": "AI·데이터사이언스 트랙 핵심 — 1학기만 개설"
     },
     {
-      "code": "EO302",
-      "name": "컴퓨터구조",
-      "credits": 3,
-      "category": "전공선택",
-      "year": 3,
-      "semesters": [1],
-      "required": false,
-      "offeredOnce": true,
-      "prerequisites": ["EO209"],
-      "note": "임베디드·시스템 트랙"
-    },
-    {
       "code": "EO303",
       "name": "컴파일러",
       "credits": 3,
@@ -199,8 +200,8 @@
       "semesters": [1],
       "required": false,
       "offeredOnce": true,
-      "prerequisites": ["EO201"],
-      "note": "고급 시스템 과목"
+      "prerequisites": ["EO204"],
+      "note": "고급 시스템 과목 — 계산이론 선수 필요"
     },
     {
       "code": "EO304",
@@ -261,6 +262,28 @@
       "note": "졸업 필수 — 4학년 이수"
     },
     {
+      "code": "GE-ENGLISH",
+      "name": "English Communication(1)",
+      "credits": 2,
+      "category": "교양필수",
+      "year": 1,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "기초교양 필수 — 에브리타임 A학년(전학년) 개설, 1학년 이수 권장. QY012140-149 섹션 다수"
+    },
+    {
+      "code": "GE-WRITING",
+      "name": "사고와표현(1)",
+      "credits": 2,
+      "category": "교양필수",
+      "year": 1,
+      "semesters": [1, 2],
+      "required": true,
+      "offeredOnce": false,
+      "note": "기초교양 필수 — 에브리타임 A학년(전학년) 개설, 1학년 이수 권장. QY003087/088 섹션"
+    },
+    {
       "code": "GE-STARTUP",
       "name": "창업기초",
       "credits": 3,
@@ -269,7 +292,7 @@
       "semesters": [1, 2],
       "required": false,
       "offeredOnce": false,
-      "note": "Plan C/D 교양 가중치 권장 — 3~4학년 경쟁 심함, 2학년 이수 권장"
+      "note": "교양 선택 — 2학년 이수 권장"
     },
     {
       "code": "GE-SELF",
@@ -319,6 +342,14 @@
       "courses": ["EO209"],
       "description": "리눅스시스템(EO209) 미이수",
       "consequence": "운영체제·컴퓨터구조 등 시스템 계열 전공선택 수강 불가",
+      "delayYears": 1,
+      "severity": "danger"
+    },
+    {
+      "triggerId": "missing-eo201",
+      "courses": ["EO201"],
+      "description": "자바프로그래밍(EO201) 미이수",
+      "consequence": "객체지향 심화 과목 및 안드로이드·백엔드 트랙 선수 조건 미충족",
       "delayYears": 1,
       "severity": "danger"
     },

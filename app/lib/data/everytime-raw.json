@@ -159,7 +159,7 @@
       "professor": "김혜영",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "금", "periods": [4, 5], "room": "30관 408" }
       ],
@@ -174,7 +174,7 @@
       "professor": "메이",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [2, 3], "room": "30관 614" }
       ],
@@ -189,7 +189,7 @@
       "professor": "메이",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [8, 9], "room": "30관 614" }
       ],
@@ -204,7 +204,7 @@
       "professor": "메이",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "화", "periods": [8, 9], "room": "30관 614" }
       ],
@@ -219,7 +219,7 @@
       "professor": "메이",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "수", "periods": [2, 3], "room": "30관 614" }
       ],
@@ -234,7 +234,7 @@
       "professor": "메이",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "수", "periods": [8, 9], "room": "30관 614" }
       ],
@@ -249,7 +249,7 @@
       "professor": "인드라",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [4, 5], "room": "30관 715" }
       ],
@@ -264,7 +264,7 @@
       "professor": "인드라",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [6, 7], "room": "30관 715" }
       ],
@@ -279,7 +279,7 @@
       "professor": "인드라",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [8, 9], "room": "30관 715" }
       ],
@@ -294,7 +294,7 @@
       "professor": "인드라",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "목", "periods": [4, 5], "room": "30관 713" }
       ],
@@ -309,7 +309,7 @@
       "professor": "제프",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [6, 7], "room": "30관 716" }
       ],
@@ -324,7 +324,7 @@
       "professor": "김세경",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "월", "periods": [8, 9], "room": "30관 801" }
       ],
@@ -480,9 +480,10 @@
       ],
       "rating": 3.5,
       "addedCount": 20,
-      "isGraduationRequired": false,
-      "graduationTag": "전공기초",
-      "academicRulesCode": "EO201"
+      "isGraduationRequired": true,
+      "graduationTag": "전공기초필수",
+      "academicRulesCode": "EO201",
+      "graduationNote": "academic-rules.json EO201 자바프로그래밍 — 2학년 1학기 전공기초 필수"
     },
     {
       "code": "EO201002",
@@ -496,9 +497,10 @@
       ],
       "rating": 3.5,
       "addedCount": 34,
-      "isGraduationRequired": false,
-      "graduationTag": "전공기초",
-      "academicRulesCode": "EO201"
+      "isGraduationRequired": true,
+      "graduationTag": "전공기초필수",
+      "academicRulesCode": "EO201",
+      "graduationNote": "academic-rules.json EO201 자바프로그래밍 — 2학년 1학기 전공기초 필수"
     },
     {
       "code": "SE669001",
@@ -562,7 +564,7 @@
       "schedule": [
         { "day": "월", "periods": [7, 8, 9], "room": "8관 626" }
       ],
-      "rating": 2.0,
+      "rating": 0.0,
       "addedCount": 40,
       "isGraduationRequired": true,
       "graduationTag": "전공기초필수(위험)",
@@ -592,7 +594,7 @@
       "professor": "박지희",
       "category": "기초교양",
       "credits": 2,
-      "targetYear": "A학년",
+      "targetYear": "1학년",
       "schedule": [
         { "day": "수", "periods": [4, 5], "room": "30관 620" }
       ],

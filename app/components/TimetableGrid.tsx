@@ -4,7 +4,7 @@
 // PNG download via html2canvas.
 "use client";
 
-import { useRef } from "react";
+import { useRef, useState, useCallback } from "react";
 import type { StudyPlan } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -78,6 +78,7 @@ function safeParseTime(raw?: unknown): number | null {
 interface CourseBlock {
   planIdx: number;
   name: string;
+  code?: string;
   credits?: number;
   req?: string;
   periodIdx: number | null; // null = no time info, stack from top
@@ -91,6 +92,13 @@ interface Props {
 
 export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
   const gridRef = useRef<HTMLDivElement>(null);
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const copyCode = useCallback((code: string) => {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 1200);
+  }, []);
 
   // Build grid: day → sorted array of CourseBlock
   const grid: Record<Day, CourseBlock[]> = {
@@ -106,6 +114,7 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
         grid[d].push({
           planIdx: (pi + colorOffset) % PLAN_COLORS.length,
           name: c?.name ?? "과목명 없음",
+          code: (c as { code?: string })?.code,
           credits: c?.credits,
           req: c?.requirement,
           periodIdx,
@@ -220,6 +229,7 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
                           <td key={d} className="px-1 py-1 border-r border-slate-100 dark:border-slate-800 last:border-r-0" style={{ height: 52 }}>
                             {items.map((item, j) => {
                               const c = PLAN_COLORS[item.planIdx % PLAN_COLORS.length];
+                              const isCopied = item.code && copiedCode === item.code;
                               return (
                                 <div key={j} className={cn(
                                   "rounded-lg px-2 py-1 border text-[10px] leading-snug h-full flex flex-col justify-center",
@@ -229,6 +239,16 @@ export default function TimetableGrid({ plans, colorOffset = 0 }: Props) {
                                   <div className="flex items-center gap-1 mt-0.5 flex-wrap">
                                     {item.credits !== undefined && (
                                       <span className="opacity-70">{item.credits}학점</span>
+                                    )}
+                                    {item.code && (
+                                      <button
+                                        type="button"
+                                        title={isCopied ? "복사됨!" : "학수번호 복사"}
+                                        onClick={() => copyCode(item.code!)}
+                                        className="opacity-70 hover:opacity-100 font-mono text-[9px] underline underline-offset-1 cursor-pointer bg-transparent border-none p-0 transition-opacity"
+                                      >
+                                        {isCopied ? "✓복사됨" : item.code}
+                                      </button>
                                     )}
                                     {item.req && (
                                       <span className="opacity-60 text-[9px]">· {item.req}</span>

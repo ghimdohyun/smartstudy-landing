@@ -43,8 +43,33 @@ export function buildPrompt(studentInfo: string, timetableInfo: string, universi
     ? `5. day 필드에 "${config.timetable.preferOffDay}" 포함 불가 (공강 원칙)\n6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`
     : `5. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`;
 
+  // ── Year-based hard filter ────────────────────────────────────────────────
+  const is2ndYear = /2\s*학년|sophomore/i.test(studentInfo);
+  const yearHardFilter = is2ndYear
+    ? `
+▶▶▶ [HARD-FILTER — 2학년 수강 제한 · 아래 규칙 위반 시 해당 Plan 전체 무효] ◀◀◀
+- 다음 과목들은 1학년 전용이므로 Plan A~D 어디에도 절대 포함 불가:
+  사고와표현, English Communication, 영어커뮤니케이션, 인성과성찰, GE-ENGLISH, GE-WRITING, GE101, GE102
+- targetYear="1학년" 또는 target="1학년"인 모든 과목 제외
+- EO1xx 코드(100번대) 과목 전체 제외
+- 이 규칙을 위반하는 Plan이 하나라도 있으면 그 Plan courses를 비우고 재설계하라
+▶▶▶▶▶◀◀◀◀◀`
+    : "";
+
+  // ── Direct-text priority section ─────────────────────────────────────────
+  const directSection = timetableInfo?.trim()
+    ? `
+╔══════════════════════════════════════════════════════════════╗
+║  직접 입력 조건 — [최우선 Weight=100] 이미지·PDF보다 우선   ║
+║  아래 조건을 모든 플랜에 반드시 반영하라. 위반 시 무효.     ║
+╚══════════════════════════════════════════════════════════════╝
+${timetableInfo.trim()}
+`
+    : `## 시간표 / 지침서\n없음\n`;
+
   return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
 [REQUIRED_STRICT MODE — 아래 모든 원칙은 협상 불가, 위반 시 응답 전체 무효]
+[OUTPUT_ENCODING: UTF-8 Korean only — \u0000-\u001F \u0080-\u009F PUA surrogates FORBIDDEN]
 
 ══════════════════════════════════════════════════════════════
 【학생 맞춤 최우선 필터 — 모든 과목 추천의 절대적 기준】
@@ -52,9 +77,10 @@ ${studentInfo}
 → 위 학생의 관심 분야·진로·수강 조건에 부합하지 않는 과목 추천 금지.
 → 학생 정보가 반영되지 않은 계획은 INVALID로 간주한다.
 ══════════════════════════════════════════════════════════════
+${yearHardFilter}
 
 ## 역할 선언
-너는 대학 수강신청 전문가이다. 위 학생 맞춤 정보를 최우선으로 반영하여 편람 데이터 기반 전공과 교양 필수 과목을 배치하라.
+너는 대학 수강신청 전문가이다. 위 학생 맞춤 정보와 직접 입력 조건을 최우선으로 반영하여 편람 데이터 기반 전공과 교양 필수 과목을 배치하라.
 
 ## ⚠ REQUIRED_STRICT 출력 원칙 (단 하나의 위반도 허용 불가)
 1. [CRITICAL] planA, planB, planC, planD 4개 키를 **모두** 반환하라. 누락 시 응답 전체 무효.
@@ -65,14 +91,16 @@ ${studentInfo}
    - Plan D (전공집중): 졸업요건 최적화 — 전공필수·전공선택 집중 배치
 3. [CRITICAL] courses[].day: 반드시 한글 요일로 기입 (예: "월수금", "화목", "월")
    courses[].time: 반드시 교시 또는 시각으로 기입 (예: "1교시", "09:00", "10:30")
-4. [CRITICAL] 깨진 텍스트·한자·중국어·비표준 유니코드 출력 절대 금지 → 순수 한국어만
+4. [CRITICAL — ENCODING] 아래 문자는 응답에서 절대 금지:
+   - C0/C1 제어문자 (\u0000-\u001F, \u0080-\u009F)
+   - 한자(CJK Unified: \u4E00-\u9FFF), 중국어, 일본어 가나
+   - PUA(사용자 정의 영역), 대리 쌍(surrogate pairs)
+   - 깨진 인코딩 시퀀스 (예: \\u0084, \\u0093, \\u0094)
+   → 모든 텍스트는 순수 한국어(한글) + ASCII 만 사용
 5. [CRITICAL] 과목명·학수번호는 실제 편람에 존재하는 것만 사용 (임의 생성 불가)
 6. courses 필드 순서: code, name, credits, requirement, target, day, time (모두 필수)
 
-제공된 [시간표 이미지], [지침서 설명]을 융합 분석하여 4가지 전략의 수강 계획과 1년 로드맵을 JSON으로 반환하라.
-
-## 시간표 / 지침서
-${timetableInfo || "없음"}
+${directSection}
 
 ${universityRules}
 
@@ -83,7 +111,7 @@ ${universityRules}
 - Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최단 경로 최적화. ${tc}학점.
 
 ## 공통 지시 사항
-1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
+1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영 (직접 입력 조건보다 하위 우선순위)
 2. 실제 교과목 편성표에 존재하는 과목만 추천
 3. yearPlan: 1학기(3-6월), 2학기(9-12월) + 12개월 월별 목표 포함
 4. courses 각 항목: code, name, credits, requirement, target, day, time 필수

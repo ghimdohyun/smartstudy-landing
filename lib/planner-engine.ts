@@ -97,6 +97,16 @@ const PERIOD_DURATION = 50; // minutes
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
+/**
+ * Parse Korean year string → number.
+ * "1학년" → 1, "2학년" → 2, null/undefined → null
+ */
+function parseTargetYear(raw: string | null | undefined): number | null {
+  if (!raw) return null;
+  const m = raw.match(/(\d+)학년/);
+  return m ? parseInt(m[1], 10) : null;
+}
+
 /** Convert EverytimeCourse → Course (app type) */
 function toAppCourse(et: EverytimeCourse): Course {
   // Use first schedule slot for day/time
@@ -319,14 +329,19 @@ interface PlanConfig {
  * 2. Pick first non-conflicting candidate that improves or maintains score.
  * 3. Backtrack if credit target not reachable.
  *
- * @param prefs   Optional user scheduling preferences (early-morning penalty,
- *                preferred-professor bonus, mandatory-chain score).
+ * @param prefs        Optional user scheduling preferences.
+ * @param studentYear  Current student academic year (1~4). Courses outside
+ *                     this year band are excluded from the greedy pool.
+ *                     forceIncludeCodes are always allowed regardless of year.
  */
 function selectCourses(
   pool: EverytimeCourse[],
   config: PlanConfig,
   prefs: PlannerPreferences = {},
+  studentYear: number = 2,
 ): EverytimeCourse[] {
+  const forcedCodes = new Set(config.forceIncludeCodes ?? []);
+
   // Deduplicate pool by name → keep best-rated section per course
   const byName = uniqueByName(pool);
   const deduped: EverytimeCourse[] = [];
@@ -335,8 +350,27 @@ function selectCourses(
     deduped.push(best);
   }
 
-  // Sort by config (preference delta added to base score for sort order)
-  const scored = deduped.map(c => ({
+  /**
+   * Year-appropriateness filter (applied to greedy pool only).
+   * - Courses with targetYear strictly below studentYear are excluded:
+   *   a 2nd-year student should have already completed 1st-year courses.
+   * - Courses with targetYear above studentYear are also excluded:
+   *   too advanced for the current semester.
+   * - Courses with no targetYear restriction (null) are always included.
+   * - forceIncludeCodes bypass this filter entirely.
+   */
+  function isYearAppropriate(c: EverytimeCourse): boolean {
+    const isForced = forcedCodes.has(c.academicRulesCode ?? c.code ?? "");
+    if (isForced) return true;
+    const ty = parseTargetYear(c.targetYear);
+    if (ty === null) return true; // no year restriction (general education etc.)
+    return ty === studentYear;   // must match student's exact year
+  }
+
+  const yearFiltered = deduped.filter(isYearAppropriate);
+
+  // Sort year-filtered candidates by scorer + preference score
+  const scored = yearFiltered.map(c => ({
     course: c,
     baseScore: config.scorer(c, []) + preferenceScore(c, prefs, []),
   }));
@@ -345,17 +379,17 @@ function selectCourses(
 
   const selected: EverytimeCourse[] = [];
 
-  // Force-include required courses first (these ignore preferences)
+  // Force-include required courses first (bypass year filter — use full deduped)
   if (config.forceIncludeCodes) {
     for (const code of config.forceIncludeCodes) {
-      const course = sorted.find(c => c.academicRulesCode === code || c.code === code);
+      const course = deduped.find(c => c.academicRulesCode === code || c.code === code);
       if (course && !hasTimeConflict(course, selected)) {
         selected.push(course);
       }
     }
   }
 
-  // Greedy fill up to max credits, applying preference modifiers live
+  // Greedy fill up to max credits (year-filtered pool)
   for (const candidate of sorted) {
     if (selected.includes(candidate)) continue;
     const cur = totalCredits(selected);
@@ -379,10 +413,10 @@ const PLAN_CONFIGS: PlanConfig[] = [
   {
     planId: "A",
     label: "안전 플랜",
-    description: "졸업 필수 과목 우선 이수 + 시간표 충돌 제로. 가장 안전한 수강신청.",
+    description: "졸업 필수 과목 우선 이수 + 시간표 충돌 제로. 편람 기준 2학년 1학기 Golden Standard.",
     emoji: "🛡️",
-    targetCredits: { min: 15, max: 21 },
-    forceIncludeCodes: ["EO203", "EO209"],
+    targetCredits: { min: 15, max: 19 },
+    forceIncludeCodes: ["EO203", "EO209", "EO201"],
     scorer: (c, cur) => {
       let s = 0;
       if (isAcademicRequired(c)) s += 50;
@@ -400,18 +434,20 @@ const PLAN_CONFIGS: PlanConfig[] = [
   {
     planId: "B",
     label: "꿀강 플랜",
-    description: "에브리타임 평점 최상위 강의 집중 편성. 학점 부담 최소화.",
+    description: "에브리타임 평점 최상위 강의 집중 편성. Plan A 실패 시 대안 — 전공기초 유지.",
     emoji: "⭐",
-    targetCredits: { min: 12, max: 18 },
+    targetCredits: { min: 12, max: 19 },
+    forceIncludeCodes: ["EO203", "EO201"],
     scorer: (c) => c.rating * 10 + Math.log10(c.addedCount + 1) * 5,
     sort: (a, b) => b.rating - a.rating || b.addedCount - a.addedCount,
   },
   {
     planId: "C",
     label: "공강 플랜",
-    description: "수업을 특정 요일에 집중 배치하여 공강일 최대화.",
+    description: "전공기초 수강 유지하면서 공강일 최대화. Plan A/B 수강신청 실패 시 여유 시나리오.",
     emoji: "🏖️",
-    targetCredits: { min: 12, max: 18 },
+    targetCredits: { min: 12, max: 19 },
+    forceIncludeCodes: ["EO203"],
     scorer: (c, cur) => {
       const days = activeDays([...cur, c]);
       const freeDayBonus = (5 - days.size) * 20;
@@ -428,23 +464,23 @@ const PLAN_CONFIGS: PlanConfig[] = [
   {
     planId: "D",
     label: "전공심화 플랜",
-    description: "전공 필수·기초 최대 이수. 졸업 요건 조기 달성 전략.",
+    description: "2학년 전공기초 전부 이수 + 선택 전공 최대 편성. 졸업 요건 조기 달성 전략.",
     emoji: "🎓",
-    targetCredits: { min: 18, max: 21 },
-    forceIncludeCodes: ["EO203", "EO209", "EO111"],
+    targetCredits: { min: 18, max: 19 },
+    forceIncludeCodes: ["EO203", "EO209", "EO201"],
     scorer: (c) => {
       let s = 0;
-      if (c.category === "전공" || c.category === "학부기초") s += 30;
+      // 전공, 학부기초, 전공기초 모두 상위 우선순위
+      if (c.category === "전공" || c.category === "학부기초" || c.category === "전공기초") s += 30;
       if (isAcademicRequired(c)) s += 40;
       s += c.credits * 5;
       return s;
     },
     sort: (a, b) => {
-      const aScore = (a.category === "전공" || a.category === "학부기초" ? 30 : 0)
-        + (isAcademicRequired(a) ? 40 : 0) + a.credits * 5;
-      const bScore = (b.category === "전공" || b.category === "학부기초" ? 30 : 0)
-        + (isAcademicRequired(b) ? 40 : 0) + b.credits * 5;
-      return bScore - aScore;
+      const majorScore = (c: typeof a) =>
+        (c.category === "전공" || c.category === "학부기초" || c.category === "전공기초" ? 30 : 0)
+        + (isAcademicRequired(c) ? 40 : 0) + c.credits * 5;
+      return majorScore(b) - majorScore(a);
     },
   },
 ];
@@ -454,12 +490,15 @@ const PLAN_CONFIGS: PlanConfig[] = [
 /**
  * Internal plan builder shared between generateAllPlans and
  * generateAllPlansWithPreferences.
+ *
+ * @param studentYear  Academic year of the student (1~4). Default 2.
+ *                     1학년 courses are excluded from 2학년 plans, etc.
  */
-function buildAllPlans(prefs: PlannerPreferences = {}): EngineResult[] {
+function buildAllPlans(prefs: PlannerPreferences = {}, studentYear: number = 2): EngineResult[] {
   const pool = everytimeRaw.courses as EverytimeCourse[];
 
   return PLAN_CONFIGS.map((config) => {
-    const selected = selectCourses(pool, config, prefs);
+    const selected = selectCourses(pool, config, prefs, studentYear);
     const active = activeDays(selected);
     const free = ALL_DAYS.filter(d => !active.has(d));
     const credits = totalCredits(selected);
@@ -485,30 +524,35 @@ function buildAllPlans(prefs: PlannerPreferences = {}): EngineResult[] {
 /**
  * Generate all 4 scenario plans from everytime-raw.json.
  * Returns EngineResult[] ready for TimetableGrid display.
+ *
+ * @param studentYear  Academic year of the student (default 2).
+ *                     Filters out courses intended for other years.
  */
-export function generateAllPlans(): EngineResult[] {
-  return buildAllPlans();
+export function generateAllPlans(studentYear: number = 2): EngineResult[] {
+  return buildAllPlans({}, studentYear);
 }
 
 /**
  * Generate all 4 scenario plans with user-defined scheduling preferences.
+ *
+ * @param studentYear  Academic year of the student (default 2).
  *
  * @example
  * generateAllPlansWithPreferences({
  *   penaltyEarlyMorning: -20,   // avoid 09:00 classes
  *   bonusPreferredProfs: ["김철수"],
  *   mandatoryChainScore: 60,    // protect prerequisite chains
- * });
+ * }, 2);
  */
-export function generateAllPlansWithPreferences(prefs: PlannerPreferences): EngineResult[] {
-  return buildAllPlans(prefs);
+export function generateAllPlansWithPreferences(prefs: PlannerPreferences, studentYear: number = 2): EngineResult[] {
+  return buildAllPlans(prefs, studentYear);
 }
 
 /**
  * Generate a single plan by ID.
  */
-export function generatePlan(planId: "A" | "B" | "C" | "D"): EngineResult | null {
-  const all = generateAllPlans();
+export function generatePlan(planId: "A" | "B" | "C" | "D", studentYear: number = 2): EngineResult | null {
+  const all = generateAllPlans(studentYear);
   return all.find(p => p.planId === planId) ?? null;
 }
 
@@ -542,12 +586,12 @@ export interface FallbackResult extends EngineResult {
  *
  * If all courses are required or no valid substitute exists, returns null.
  */
-export function generateFallbackPlan(prefs: PlannerPreferences = {}): FallbackResult | null {
+export function generateFallbackPlan(prefs: PlannerPreferences = {}, studentYear: number = 2): FallbackResult | null {
   const pool = everytimeRaw.courses as EverytimeCourse[];
 
   // --- Step 1: Run Plan A to get the primary selection ---
   const planAConfig = PLAN_CONFIGS.find(c => c.planId === "A")!;
-  const planASelected = selectCourses(pool, planAConfig, prefs);
+  const planASelected = selectCourses(pool, planAConfig, prefs, studentYear);
   if (planASelected.length === 0) return null;
 
   // --- Step 2: Score each Plan A course by competition risk ---

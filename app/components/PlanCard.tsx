@@ -1,6 +1,7 @@
 // PlanCard — white-theme card + instant CSV download per plan
 "use client";
 
+import { useState, useCallback } from "react";
 import type { StudyPlan } from "@/types";
 import { cn } from "@/lib/utils";
 
@@ -44,6 +45,13 @@ function downloadPlan(plan: StudyPlan, label: string) {
 export default function PlanCard({ plan, index }: Props) {
   const meta  = PLAN_META[index % PLAN_META.length];
   const label = plan.label ?? meta.label;
+  const [copiedCode, setCopiedCode] = useState<string | null>(null);
+
+  const copyCode = useCallback((code: string) => {
+    navigator.clipboard.writeText(code).catch(() => {});
+    setCopiedCode(code);
+    setTimeout(() => setCopiedCode(null), 1200);
+  }, []);
 
   return (
     <div className={cn(
@@ -86,9 +94,14 @@ export default function PlanCard({ plan, index }: Props) {
                   <p className="text-[13px] font-semibold text-slate-800 truncate">{c.name}</p>
                   <div className="flex flex-wrap gap-1 mt-0.5">
                     {c.code && (
-                      <span className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-100 text-slate-500 tracking-wide border border-slate-200">
-                        {c.code}
-                      </span>
+                      <button
+                        type="button"
+                        title={copiedCode === c.code ? "복사됨!" : "학수번호 복사"}
+                        onClick={() => copyCode(c.code!)}
+                        className="text-[10px] font-mono px-1.5 py-px rounded bg-slate-100 text-slate-500 tracking-wide border border-slate-200 cursor-pointer hover:bg-indigo-50 hover:border-indigo-200 hover:text-indigo-600 transition-colors"
+                      >
+                        {copiedCode === c.code ? "✓ 복사됨" : c.code}
+                      </button>
                     )}
                     {c.requirement && (
                       <span className={cn("text-[10px] font-semibold px-1.5 py-px rounded", reqBadge(c.requirement))}>

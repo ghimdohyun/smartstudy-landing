@@ -273,7 +273,7 @@ function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
           "파일 내 특수문자가 너무 많습니다. 텍스트로 복사해서 입력해주세요.",
         );
       }
-      const res = await fetch("/api/pdf-extract", {
+      const res = await fetch("/api/v1?type=pdf", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: requestBody,
@@ -403,26 +403,43 @@ interface Props {
 export default function StudyPlanForm({ onSubmit, loading, status, error }: Props) {
   const [mode,          setMode]          = useState<"plans" | "year">("plans");
   const [studentInfo,   setStudentInfo]   = useState("");
-  const [timetableInfo, setTimetableInfo] = useState("");
+  const [conditions,    setConditions]    = useState(""); // 수강 조건 직접 입력 (최우선)
+  const [pdfContext,    setPdfContext]    = useState(""); // PDF에서 추출된 컨텍스트
   const [imageUrl,      setImageUrl]      = useState("");
-  const [uploadMode,    setUploadMode]    = useState<"image" | "pdf">("image");
-  const [pdfMode,       setPdfMode]       = useState(false);
+  const [pdfLoaded,     setPdfLoaded]     = useState(false);
 
   const universityId =
     typeof window !== "undefined"
       ? (localStorage.getItem("smartstudy_university") ?? undefined)
       : undefined;
 
+  // PDF 추출 완료 → 별도 컨텍스트에 저장 (conditions를 덮어쓰지 않음)
   const handlePdfExtracted = useCallback((r: PdfExtractResult) => {
-    setTimetableInfo(r.curriculumText); setPdfMode(true);
+    setPdfContext(r.curriculumText);
+    setPdfLoaded(true);
   }, []);
 
-  const handleModeSwitch = (m: "image" | "pdf") => {
-    setUploadMode(m); if (m === "image") setPdfMode(false);
+  // 최종 timetableInfo = 직접 입력 조건(최우선) + PDF 컨텍스트(보조)
+  const buildTimetableInfo = (): string => {
+    const parts: string[] = [];
+    if (conditions.trim()) {
+      parts.push(`[직접 입력 수강 조건 — 최우선]\n${conditions.trim()}`);
+    }
+    if (pdfContext.trim()) {
+      parts.push(`[PDF 편람 추출 데이터 — 보조]\n${pdfContext.trim()}`);
+    }
+    return parts.join("\n\n");
   };
 
   const handleSubmit = () =>
-    onSubmit({ studentInfo, timetableInfo, imageUrl, mode, universityId, pdfMode });
+    onSubmit({
+      studentInfo,
+      timetableInfo: buildTimetableInfo(),
+      imageUrl,
+      mode,
+      universityId,
+      pdfMode: pdfLoaded,
+    });
 
   const textareaClass = cn(
     "w-full px-3.5 py-3 text-[14px] rounded-xl resize-vertical",
@@ -466,58 +483,76 @@ export default function StudyPlanForm({ onSubmit, loading, status, error }: Prop
 
         <p className="text-[13px] text-gray-500">
           {mode === "plans"
-            ? "정보를 자세히 입력할수록 더 정확한 Plan A~D가 생성됩니다."
+            ? "3가지 정보를 모두 입력할수록 AI 정확도가 높아집니다. 텍스트 조건이 최우선 반영됩니다."
             : "목표, 시간표, 활동 계획을 입력하면 1년 학습 로드맵을 제안합니다."}
         </p>
 
-        {/* Student info */}
+        {/* ① 학생 정보 */}
         <div>
-          <label className={labelClass}>학생 정보</label>
+          <label className={labelClass}>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-slate-700 text-white text-[10px] font-bold flex items-center justify-center shrink-0">1</span>
+              학생 정보
+            </span>
+          </label>
           <textarea rows={4} value={studentInfo} onChange={(e) => setStudentInfo(e.target.value)}
-            placeholder={"- 학교 / 학과 / 학년\n- 이번 학기 목표 학점\n- 진로 · 관심 분야"}
+            placeholder={"- 학교 / 학과 / 학년 (예: 경성대 소프트웨어학과 2학년)\n- 이번 학기 목표 학점\n- 진로 · 관심 분야"}
             className={textareaClass}
           />
         </div>
 
-        {/* Timetable info */}
+        {/* ② 수강 조건 직접 입력 (최우선) */}
         <div>
           <label className={labelClass}>
-            시간표 / 수강 조건
-            {pdfMode && (
-              <span className="ml-2 text-[11px] font-normal text-emerald-600">✓ PDF에서 자동 입력됨</span>
-            )}
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-indigo-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">2</span>
+              수강 조건 직접 입력
+              <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-red-100 text-red-600 border border-red-200">
+                AI 최우선 반영
+              </span>
+            </span>
           </label>
-          <textarea rows={pdfMode ? 3 : 4} value={timetableInfo} readOnly={pdfMode}
-            onChange={(e) => setTimetableInfo(e.target.value)}
-            placeholder={pdfMode ? "PDF 분석 결과가 자동으로 입력되었습니다." : "- 희망 시간표\n- 꼭 듣고 싶은 / 피하고 싶은 과목\n- 기타 조건"}
-            className={cn(textareaClass, pdfMode && "opacity-50 cursor-default")}
+          <textarea rows={4} value={conditions} onChange={(e) => setConditions(e.target.value)}
+            placeholder={"예: 2학년 1학기 최고의 계획표를 원해\n- 꼭 들어야 할 과목: 전산수학, 리눅스시스템\n- 피하고 싶은 과목 / 교수\n- 희망 공강일: 금요일\n- 기타 특별 조건"}
+            className={cn(textareaClass, "border-indigo-300 focus:border-indigo-500 focus:ring-indigo-400/25 bg-indigo-50/30")}
           />
+          <p className="mt-1 text-[11px] text-indigo-500">
+            이 텍스트는 이미지·PDF보다 높은 우선순위로 AI에 전달됩니다.
+          </p>
         </div>
 
-        {/* Upload zone */}
+        {/* ③ 자료 업로드 — 이미지 + PDF 동시 노출 */}
         <div>
-          <div className="flex items-center mb-2">
-            <label className={labelClass + " mb-0"}>자료 업로드</label>
-            {/* Toggle */}
-            <div className="ml-auto flex rounded-lg border border-gray-200 overflow-hidden text-[12px] font-semibold">
-              {(["image", "pdf"] as const).map((m) => (
-                <button key={m} type="button" onClick={() => handleModeSwitch(m)}
-                  className={cn("px-3 py-1.5 transition-colors",
-                    m === "pdf" && "border-l border-gray-200",
-                    uploadMode === m
-                      ? m === "pdf" ? "bg-indigo-500 text-white" : "bg-emerald-500 text-white"
-                      : "text-gray-500 hover:text-gray-700 bg-white"
-                  )}>
-                  {m === "image" ? "🖼 이미지" : "📄 PDF 편람"}
-                </button>
-              ))}
+          <label className={labelClass}>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold flex items-center justify-center shrink-0">3</span>
+              자료 업로드
+              <span className="text-[11px] font-normal text-gray-400">(선택 — 이미지·PDF 동시 첨부 가능)</span>
+            </span>
+          </label>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* 이미지 업로드 */}
+            <div>
+              <p className="text-[12px] font-semibold text-emerald-700 mb-1.5 flex items-center gap-1">
+                🖼 시간표 이미지
+              </p>
+              <ImageDropZone value={imageUrl} onChange={setImageUrl} />
+            </div>
+
+            {/* PDF 편람 */}
+            <div>
+              <p className="text-[12px] font-semibold text-indigo-700 mb-1.5 flex items-center gap-1">
+                📄 편람 PDF
+                {pdfLoaded && (
+                  <span className="ml-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 text-emerald-700 border border-emerald-200">
+                    로드됨
+                  </span>
+                )}
+              </p>
+              <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
             </div>
           </div>
-
-          {uploadMode === "image"
-            ? <ImageDropZone value={imageUrl} onChange={setImageUrl} />
-            : <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
-          }
         </div>
 
         {/* Submit */}
