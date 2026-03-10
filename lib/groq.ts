@@ -4,7 +4,8 @@
 
 import Groq from "groq-sdk";
 import { buildPlanPromptRules, getUniversityConfig } from "@/lib/university-kb";
-import { stripCjkNoise } from "@/lib/planner-logic";
+import { stripCjkNoise, detectStudentYear, hardFilterCoursesByYear } from "@/lib/planner-logic";
+import type { Course } from "@/types";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -33,9 +34,47 @@ export class UpstreamError extends Error {
   }
 }
 
+// ─── Privacy-Shield header (constant) ────────────────────────────────────────
+
+const PRIVACY_SHIELD = `╔══════════════════════════════════════════════════════════════╗
+║  PRIVACY-SHIELD ACTIVE                                       ║
+║  본 요청 데이터는 AI 모델 학습에 사용되지 않습니다.          ║
+║  학생 개인정보는 이 API 호출에만 일시 사용되며,              ║
+║  응답 완료 즉시 메모리에서 소거됩니다.                       ║
+╚══════════════════════════════════════════════════════════════╝`;
+
+// ─── Negative course list for year-based filtering ───────────────────────────
+
+/** 1학년 전용 과목 — 학년이 감지된 경우 Negative Prompt에 삽입 */
+const YEAR1_NEGATIVE_COURSES = [
+  "사고와표현", "사고와 표현", "사고와표현(1)",
+  "English Communication", "English Comm", "EnglishComm",
+  "대학영어", "기초영어", "기초영어작문", "영어회화기초",
+  "영어커뮤니케이션", "Academic English",
+  "대학생활과진로", "대학생활과 진로", "대학생활과진로탐색",
+];
+
+function buildNegativeCoursesBlock(studentInfo: string): string {
+  const year = detectStudentYear(studentInfo);
+  if (!year || year < 2) return "";
+  const list = YEAR1_NEGATIVE_COURSES.map((n) => `  - ${n}`).join("\n");
+  return `
+⛔⛔⛔ NEGATIVE PROMPT — ${year}학년 절대 제외 과목 (AI 생성 자체 금지) ⛔⛔⛔
+아래 과목들은 1학년 전용이므로 ${year}학년 플랜에 절대 포함 금지.
+이름이 부분 일치하는 과목도 포함 불가. 위반 즉시 응답 무효 처리됨.
+${list}
+⛔⛔⛔ 위 목록은 negotiable하지 않으며 어떤 이유로도 포함 불가 ⛔⛔⛔
+`;
+}
+
 // ─── Enhanced prompt ─────────────────────────────────────────────────────────
 
-export function buildPrompt(studentInfo: string, timetableInfo: string, universityId?: string): string {
+export function buildPrompt(
+  studentInfo: string,
+  timetableInfo: string,
+  universityId?: string,
+  pdfKnowledge?: string,
+): string {
   const config = getUniversityConfig(universityId);
   const universityRules = buildPlanPromptRules(config);
   const tc = config.timetable.targetCredits;
@@ -43,44 +82,46 @@ export function buildPrompt(studentInfo: string, timetableInfo: string, universi
     ? `5. day 필드에 "${config.timetable.preferOffDay}" 포함 불가 (공강 원칙)\n6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`
     : `5. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`;
 
-  // ── Year-based hard filter ────────────────────────────────────────────────
-  const is2ndYear = /2\s*학년|sophomore/i.test(studentInfo);
-  const yearHardFilter = is2ndYear
-    ? `
-▶▶▶ [HARD-FILTER — 2학년 수강 제한 · 아래 규칙 위반 시 해당 Plan 전체 무효] ◀◀◀
-- 다음 과목들은 1학년 전용이므로 Plan A~D 어디에도 절대 포함 불가:
-  사고와표현, English Communication, 영어커뮤니케이션, 인성과성찰, GE-ENGLISH, GE-WRITING, GE101, GE102
-- targetYear="1학년" 또는 target="1학년"인 모든 과목 제외
-- EO1xx 코드(100번대) 과목 전체 제외
-- 이 규칙을 위반하는 Plan이 하나라도 있으면 그 Plan courses를 비우고 재설계하라
-▶▶▶▶▶◀◀◀◀◀`
-    : "";
+  const negativeBlock = buildNegativeCoursesBlock(studentInfo);
 
-  // ── Direct-text priority section ─────────────────────────────────────────
-  const directSection = timetableInfo?.trim()
+  // Build the official regulation block from structured PDF knowledge
+  const officialRegulationBlock = pdfKnowledge?.trim()
     ? `
-╔══════════════════════════════════════════════════════════════╗
-║  직접 입력 조건 — [최우선 Weight=100] 이미지·PDF보다 우선   ║
-║  아래 조건을 모든 플랜에 반드시 반영하라. 위반 시 무효.     ║
-╚══════════════════════════════════════════════════════════════╝
-${timetableInfo.trim()}
+▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶
+[AUTHORITY=OFFICIAL] 학교 공식 규정 — PDF 편람에서 정제된 데이터
+이미지·학생 입력보다 우선하는 학교 공식 이수 규정입니다.
+아래 규정과 충돌하는 어떤 추천도 무효입니다.
+▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶
+${pdfKnowledge}
+▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶▶
 `
-    : `## 시간표 / 지침서\n없음\n`;
+    : "";
 
   return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
 [REQUIRED_STRICT MODE — 아래 모든 원칙은 협상 불가, 위반 시 응답 전체 무효]
-[OUTPUT_ENCODING: UTF-8 Korean only — \u0000-\u001F \u0080-\u009F PUA surrogates FORBIDDEN]
 
-══════════════════════════════════════════════════════════════
-【학생 맞춤 최우선 필터 — 모든 과목 추천의 절대적 기준】
+${PRIVACY_SHIELD}
+${negativeBlock}
+${officialRegulationBlock}
+════════════════════════════════════════════════════════════════
+[STEP 1] 교과목 편람 데이터 분석 — 과목 풀 결정 (WEIGHT=HIGH)
+제공된 PDF 텍스트 / 이미지 = 추천 가능 과목의 단일 진실 원천(Source of Truth).
+이 데이터에 없는 과목은 절대 추천 불가. 편람에 존재하는 과목명·학수번호만 사용.
+════════════════════════════════════════════════════════════════
+${timetableInfo || "편람 데이터 없음 — 대학 표준 교과목 편성 기준으로 추천하라"}
+
+${universityRules}
+
+════════════════════════════════════════════════════════════════
+[STEP 2] 학생 개인 맞춤 필터 — 최종 선택 기준 (WEIGHT=MAX · 최상위)
+STEP 1 과목 풀에서 선별 시, 아래 직접 입력 텍스트가 절대적 필터 기준이다.
+이미지·PDF 데이터와 충돌 시 학생 직접 입력이 최종 결정권을 가진다.
+════════════════════════════════════════════════════════════════
 ${studentInfo}
-→ 위 학생의 관심 분야·진로·수강 조건에 부합하지 않는 과목 추천 금지.
-→ 학생 정보가 반영되지 않은 계획은 INVALID로 간주한다.
-══════════════════════════════════════════════════════════════
-${yearHardFilter}
+→ 학년·관심분야·진로·수강조건이 맞지 않는 과목은 STEP 1 풀에 있더라도 제외하라.
 
 ## 역할 선언
-너는 대학 수강신청 전문가이다. 위 학생 맞춤 정보와 직접 입력 조건을 최우선으로 반영하여 편람 데이터 기반 전공과 교양 필수 과목을 배치하라.
+너는 대학 수강신청 전문가이다. STEP 1(과목 풀 확정) → STEP 2(개인 필터 적용) 순서로 분석하여 최적 계획을 JSON으로 반환하라.
 
 ## ⚠ REQUIRED_STRICT 출력 원칙 (단 하나의 위반도 허용 불가)
 1. [CRITICAL] planA, planB, planC, planD 4개 키를 **모두** 반환하라. 누락 시 응답 전체 무효.
@@ -91,18 +132,9 @@ ${yearHardFilter}
    - Plan D (전공집중): 졸업요건 최적화 — 전공필수·전공선택 집중 배치
 3. [CRITICAL] courses[].day: 반드시 한글 요일로 기입 (예: "월수금", "화목", "월")
    courses[].time: 반드시 교시 또는 시각으로 기입 (예: "1교시", "09:00", "10:30")
-4. [CRITICAL — ENCODING] 아래 문자는 응답에서 절대 금지:
-   - C0/C1 제어문자 (\u0000-\u001F, \u0080-\u009F)
-   - 한자(CJK Unified: \u4E00-\u9FFF), 중국어, 일본어 가나
-   - PUA(사용자 정의 영역), 대리 쌍(surrogate pairs)
-   - 깨진 인코딩 시퀀스 (예: \\u0084, \\u0093, \\u0094)
-   → 모든 텍스트는 순수 한국어(한글) + ASCII 만 사용
+4. [CRITICAL] 깨진 텍스트·한자·중국어·비표준 유니코드 출력 절대 금지 → 순수 한국어만
 5. [CRITICAL] 과목명·학수번호는 실제 편람에 존재하는 것만 사용 (임의 생성 불가)
 6. courses 필드 순서: code, name, credits, requirement, target, day, time (모두 필수)
-
-${directSection}
-
-${universityRules}
 
 ## 4가지 수강 전략 (각 플랜은 서로 다른 과목 조합으로 구성)
 - Plan A (안정): 학점 관리 최우선, 이수 부담 최소화, 공강일 최대 확보. ${tc}학점.
@@ -111,7 +143,7 @@ ${universityRules}
 - Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최단 경로 최적화. ${tc}학점.
 
 ## 공통 지시 사항
-1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영 (직접 입력 조건보다 하위 우선순위)
+1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
 2. 실제 교과목 편성표에 존재하는 과목만 추천
 3. yearPlan: 1학기(3-6월), 2학기(9-12월) + 12개월 월별 목표 포함
 4. courses 각 항목: code, name, credits, requirement, target, day, time 필수
@@ -242,6 +274,36 @@ function splitImageUrls(imageUrl: string): string[] {
   return imageUrl.split("|||").map((u) => u.trim()).filter(Boolean);
 }
 
+// ─── Strict JSON repair (retry) ──────────────────────────────────────────────
+
+/**
+ * When the primary call returns non-JSON text, send it to llama-3.3-70b
+ * with temperature=0 and ask it to extract/reformat as pure JSON.
+ * This is the "Strict JSON Only" auto-repair tier.
+ */
+async function repairToJson(rawText: string): Promise<unknown> {
+  const repairPrompt = `[STRICT JSON REPAIR — 응답 형식 오류 자동 복구]
+아래 텍스트를 분석하여 planA, planB, planC, planD, yearPlan이 포함된 순수 JSON으로만 변환하라.
+코드블록(\`\`\`), 설명, 마크다운, 부연 텍스트 없이 { 로 시작하는 순수 JSON만 출력:
+
+${rawText.slice(0, 6000)}`;
+
+  try {
+    const repair = await groq!.chat.completions.create({
+      model: TEXT_MODEL,
+      messages: [{ role: "user", content: repairPrompt }],
+      temperature: 0,
+      max_tokens: 4096,
+      response_format: { type: "json_object" },
+    });
+    const repaired = repair.choices[0]?.message?.content ?? "{}";
+    return JSON.parse(repaired);
+  } catch {
+    console.error("[repairToJson] Repair attempt also failed — returning empty object");
+    return {};
+  }
+}
+
 /** Low-level: single Groq vision API call — caller must ensure ≤5 image parts */
 async function callGroqVisionOnce(
   messages: Groq.Chat.ChatCompletionMessageParam[]
@@ -254,7 +316,12 @@ async function callGroqVisionOnce(
     response_format: { type: "json_object" },
   });
   const raw = completion.choices[0]?.message?.content ?? "{}";
-  try { return JSON.parse(raw); } catch { return { reply: raw }; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn("[callGroqVisionOnce] JSON parse failed — auto-repair retry...");
+    return repairToJson(raw);
+  }
 }
 
 /** Context-merge prompt for batch N (1-based) — passes previous JSON result */
@@ -308,14 +375,15 @@ async function callGroqVision(
   studentInfo: string,
   timetableInfo: string,
   imageUrl: string,
-  universityId?: string
+  universityId?: string,
+  pdfKnowledge?: string,
 ): Promise<unknown> {
   const allUrls = splitImageUrls(imageUrl);
 
   // ── Single-batch path (≤5 images): one API call ──
   if (allUrls.length <= VISION_BATCH_SIZE) {
     const content: Groq.Chat.ChatCompletionContentPart[] = [
-      { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId) },
+      { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge) },
       ...allUrls.map((url): Groq.Chat.ChatCompletionContentPart => ({
         type: "image_url",
         image_url: { url },
@@ -332,7 +400,7 @@ async function callGroqVision(
 
   // Batch 0: Full initial analysis — first 5 images (핵심 전공 편성표 우선)
   const firstContent: Groq.Chat.ChatCompletionContentPart[] = [
-    { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId) },
+    { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge) },
     ...batches[0].map((url): Groq.Chat.ChatCompletionContentPart => ({
       type: "image_url",
       image_url: { url },
@@ -367,9 +435,10 @@ async function callGroqVision(
 async function callGroqText(
   studentInfo: string,
   timetableInfo: string,
-  universityId?: string
+  universityId?: string,
+  pdfKnowledge?: string,
 ): Promise<unknown> {
-  const prompt = buildPrompt(studentInfo, timetableInfo, universityId);
+  const prompt = buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge);
 
   const completion = await groq!.chat.completions.create({
     model: TEXT_MODEL,
@@ -380,7 +449,12 @@ async function callGroqText(
   });
 
   const raw = completion.choices[0]?.message?.content ?? "{}";
-  try { return JSON.parse(raw); } catch { return { reply: raw }; }
+  try {
+    return JSON.parse(raw);
+  } catch {
+    console.warn("[callGroqText] JSON parse failed — auto-repair retry...");
+    return repairToJson(raw);
+  }
 }
 
 // ─── Replit upstream (legacy fallback) ───────────────────────────────────────
@@ -459,6 +533,8 @@ export interface StudyPlanCallParams {
   timetableInfo: string;
   imageUrl?: string;
   universityId?: string;
+  /** Structured PDF knowledge — injected as 학교 공식 규정 */
+  pdfKnowledge?: string;
 }
 
 /**
@@ -503,6 +579,35 @@ function ensureFourPlans(result: Record<string, unknown>): Record<string, unknow
   return out;
 }
 
+/**
+ * Hard-filter: remove year-mismatched courses from all 4 plans.
+ * E.g. student is 2학년 → strip "1학년" exclusive courses from every plan.
+ */
+function applyYearFilter(
+  result: Record<string, unknown>,
+  studentInfo: string,
+): Record<string, unknown> {
+  const year = detectStudentYear(studentInfo);
+  if (!year || year <= 1) return result; // no filtering needed for 1학년 or unknown
+
+  const planKeys = ["planA", "planB", "planC", "planD"] as const;
+  const out = { ...result };
+  for (const key of planKeys) {
+    const plan = out[key] as Record<string, unknown> | undefined;
+    if (plan && Array.isArray(plan.courses)) {
+      const before = plan.courses as Course[];
+      const after = hardFilterCoursesByYear(before, year);
+      if (after.length < before.length) {
+        console.info(
+          `[applyYearFilter] ${key}: removed ${before.length - after.length} year-mismatched course(s) for ${year}학년`,
+        );
+      }
+      out[key] = { ...plan, courses: after };
+    }
+  }
+  return out;
+}
+
 /** Recursively strip CJK noise from all string fields in an API response object. */
 function denoiseResult(val: unknown): unknown {
   if (typeof val === "string") return stripCjkNoise(val);
@@ -518,13 +623,19 @@ function denoiseResult(val: unknown): unknown {
 }
 
 export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unknown> {
-  const { studentInfo, timetableInfo, imageUrl, universityId } = params;
+  const { studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge } = params;
+
+  if (pdfKnowledge?.trim()) {
+    console.info(
+      `[callStudyPlanApi] pdfKnowledge injected as 학교 공식 규정 — ${pdfKnowledge.length} chars`,
+    );
+  }
 
   if (groq) {
     try {
       const result = imageUrl?.trim()
-        ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId)
-        : await callGroqText(studentInfo, timetableInfo, universityId);
+        ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge)
+        : await callGroqText(studentInfo, timetableInfo, universityId, pdfKnowledge);
 
       // Fallback: if AI returned empty/malformed JSON, use demo plan rather than crashing
       if (!isValidPlanResult(result)) {
@@ -533,7 +644,9 @@ export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unk
       }
       // Guarantee all 4 plan keys exist before returning (REQUIRED_STRICT repair)
       const repaired = ensureFourPlans(result as Record<string, unknown>);
-      return denoiseResult(repaired);
+      // Hard-filter: remove year-mismatched courses (e.g., 1학년 courses for 2학년 student)
+      const yearFiltered = applyYearFilter(repaired, studentInfo);
+      return denoiseResult(yearFiltered);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new UpstreamError(500, `Groq API 오류: ${msg}`);

@@ -26,6 +26,14 @@ function NavLink({
 }
 
 export default function Header() {
+  /** 로고 클릭 → 시스템 공장 초기화 (localStorage 전체 삭제) 후 홈으로 이동 */
+  const handleLogoClick = () => {
+    if (typeof window !== "undefined") {
+      localStorage.clear();
+      window.location.href = "/";
+    }
+  };
+
   return (
     <header
       className={cn(
@@ -36,16 +44,12 @@ export default function Header() {
       )}
     >
       <div className="max-w-[1100px] mx-auto px-5 flex items-center h-[60px] gap-2">
-        {/* Logo — hard navigation clears plan state for a fresh start */}
-        <a
-          href="/"
-          onClick={() => {
-            try {
-              localStorage.removeItem("smartstudy_result");
-              localStorage.removeItem("smartstudy_last_input");
-            } catch { /* ignore */ }
-          }}
-          className="flex items-center gap-2 mr-2 shrink-0 no-underline"
+        {/* Logo — click = full system reset (localStorage.clear + navigate /) */}
+        <button
+          type="button"
+          onClick={handleLogoClick}
+          title="홈으로 돌아가기 (데이터 초기화)"
+          className="flex items-center gap-2 mr-2 shrink-0 bg-transparent border-none cursor-pointer p-0"
         >
           <Image
             src={LOGO_URL}
@@ -58,7 +62,7 @@ export default function Header() {
           <span className="text-[15px] font-bold text-gray-900 dark:text-gray-100 tracking-tight whitespace-nowrap">
             Dream Helixion
           </span>
-        </a>
+        </button>
 
         {/* Desktop nav — hidden below 640 px via .dh-nav in globals.css */}
         <nav className="dh-nav items-center flex-1">

@@ -221,6 +221,53 @@ export function generateVirtualTimes(
   return result;
 }
 
+// ─── Year-Level Hard Filtering ───────────────────────────────────────────────
+
+/**
+ * 1학년 전용 과목 목록 — 2학년 이상 플랜에서 자동 제거됨 (Hard-Filter).
+ * 비교는 대소문자 무시(toLowerCase) + 부분 일치로 처리.
+ */
+const YEAR1_EXCLUSIVE_COURSES = [
+  "사고와표현", "사고와 표현", "사고와표현(1)",
+  "english communication", "english comm", "englishcomm",
+  "academic english",
+  "영어커뮤니케이션", "기초영어작문", "기초영어", "기초영어회화",
+  "대학생활과 진로", "대학생활과진로", "대학생활과진로탐색",
+  "대학영어", "영어회화기초", "영어회화",
+  "글쓰기기초", "글쓰기와소통",
+];
+
+/**
+ * Detect student's grade year from studentInfo text.
+ * "2학년" → 2, "3학년" → 3. Returns null if not found.
+ */
+export function detectStudentYear(studentInfo: string): number | null {
+  const match = studentInfo.match(/([1-4])학년/);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Hard-filter: remove courses that belong exclusively to a lower year.
+ * - target="1학년" with student ≥ 2학년  → removed
+ * - Course name in YEAR1_EXCLUSIVE_COURSES with student ≥ 2학년 → removed
+ * Safe: 1학년 students always receive unfiltered course pool.
+ */
+export function hardFilterCoursesByYear(courses: Course[], studentYear: number): Course[] {
+  if (studentYear <= 1) return courses;
+
+  return courses.filter((course) => {
+    const target = (course.target ?? "").trim();
+    // Target explicitly "1학년" only → exclude for 2학년+
+    if (/^1학년$/.test(target) && studentYear >= 2) return false;
+
+    // Known exclusive course names — case-insensitive partial match
+    const nameLower = (course.name ?? "").toLowerCase();
+    if (YEAR1_EXCLUSIVE_COURSES.some((exc) => nameLower.includes(exc.toLowerCase()))) return false;
+
+    return true;
+  });
+}
+
 // ─── CJK Noise Removal ───────────────────────────────────────────────────────
 
 /**
