@@ -4,7 +4,7 @@
 
 import Groq from "groq-sdk";
 import { buildPlanPromptRules, getUniversityConfig } from "@/lib/university-kb";
-import { stripCjkNoise, detectStudentYear, hardFilterCoursesByYear } from "@/lib/planner-logic";
+import { stripCjkNoise, detectStudentYear, hardFilterCoursesByYear, buildGradeYearPlanHint, detectRequestedCredits } from "@/lib/planner-logic";
 import type { Course } from "@/types";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
@@ -67,6 +67,33 @@ ${list}
 `;
 }
 
+// ─── 융합Cell 이수 규정 (공과대학 · 소프트웨어 포함) ──────────────────────────
+
+/**
+ * 경성대 공과대학 융합Cell 이수 규정:
+ * 소프트웨어학과 포함 공과대학 학생은 교양선택 중
+ *   ① 인문사회 영역 1과목 (3학점)
+ *   ② 예술창작 영역 1과목 (3학점)
+ * 를 각각 최소 1과목씩 반드시 이수해야 한다.
+ */
+const FUSION_CELL_RULE = `
+┌─────────────────────────────────────────────────────────────────┐
+│  융합Cell 이수 규정 (MANDATORY — 공과대학 · 소프트웨어학과)      │
+│  아래 두 영역에서 각 1과목씩 반드시 편성할 것 (누락 시 무효)   │
+├─────────────────────────────────────────────────────────────────┤
+│  ① 인문사회 영역 (1과목 필수)                                   │
+│     - 인문고전읽기와창의적소통                                  │
+│     - 영화로보는서양문화사이야기                                │
+│     - 디지털과비즈니스                                         │
+│     (위 3과목 중 1개 선택, 또는 편람 인문사회 영역 과목 가능) │
+│  ② 예술창작 영역 (1과목 필수)                                   │
+│     - 디자인커넥션                                             │
+│     - 창의적디자인씽킹                                         │
+│     (편람 예술창작 영역 과목 중 1개 선택)                      │
+│  → requirement 필드에 "인문사회(융합Cell)" 또는                 │
+│    "예술창작(융합Cell)"로 명시하라                              │
+└─────────────────────────────────────────────────────────────────┘`;
+
 // ─── Enhanced prompt ─────────────────────────────────────────────────────────
 
 export function buildPrompt(
@@ -77,12 +104,21 @@ export function buildPrompt(
 ): string {
   const config = getUniversityConfig(universityId);
   const universityRules = buildPlanPromptRules(config);
-  const tc = config.timetable.targetCredits;
+  // Student-requested credits override config default (WEIGHT=ABSOLUTE)
+  const requestedCredits = detectRequestedCredits(studentInfo + " " + timetableInfo);
+  const tc = requestedCredits ?? config.timetable.targetCredits;
   const dayNote = config.timetable.preferOffDay
     ? `5. day 필드에 "${config.timetable.preferOffDay}" 포함 불가 (공강 원칙)\n6. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`
     : `5. 응답은 순수 JSON만 반환 (코드블록·설명 텍스트 없음)`;
 
   const negativeBlock = buildNegativeCoursesBlock(studentInfo);
+  const detectedYear = detectStudentYear(studentInfo);
+  const gradeHint = buildGradeYearPlanHint(detectedYear);
+
+  // 융합Cell 규정은 소프트웨어/공과대학에 항상 적용
+  const fusionCellBlock = (universityId?.includes("kyungsung") || !universityId)
+    ? FUSION_CELL_RULE
+    : "";
 
   // Build the official regulation block from structured PDF knowledge
   const officialRegulationBlock = pdfKnowledge?.trim()
@@ -97,11 +133,38 @@ ${pdfKnowledge}
 `
     : "";
 
+  // Credit enforcement block — only shown when user explicitly requested a count
+  const creditEnforcementBlock = requestedCredits
+    ? `
+🔒🔒🔒 학점 절대 강제 규정 (CREDIT=ABSOLUTE — 위반 즉시 응답 무효) 🔒🔒🔒
+학생이 명시적으로 요청한 학점: ${requestedCredits}학점
+→ 모든 Plan(A·B·C·D)의 totalCredits는 정확히 ${requestedCredits}학점이어야 한다.
+→ 현재 구성 학점이 ${requestedCredits}학점 미달이면:
+   우선순위① 인문사회(융합Cell) 과목 추가 (3학점)
+   우선순위② 예술창작(융합Cell) 과목 추가 (3학점)
+   우선순위③ 전공선택 과목 추가 (3학점)
+→ 어떤 이유로도 ${requestedCredits}학점 미만 Plan 반환 금지.
+🔒🔒🔒 이 규정은 AI 판단보다 상위이며 협상 불가 🔒🔒🔒
+`
+    : "";
+
+  // 인성과성찰(QY027045) 지식 베이스 주입 — 1학년 전용 과목 강제 명시
+  const INSUNG_METADATA = `
+[과목 메타데이터 강제 주입 — QY027045]
+과목명: 인성과성찰 (인성 및 성찰)  |  학수번호: QY027045
+이수 구분: 공통필수  |  학년 제한: 1학년 전용 (2학년 이상 수강 불가)
+→ 2학년·3학년·4학년 플랜에 이 과목이 포함되면 즉시 제거하고 다른 과목으로 대체하라.
+→ 1학년 플랜에서는 공통필수로 반드시 편성하라.
+`;
+
   return `[수강 계획표 AI 생성 요청 — ${config.name} ${config.department}]
 [REQUIRED_STRICT MODE — 아래 모든 원칙은 협상 불가, 위반 시 응답 전체 무효]
 
 ${PRIVACY_SHIELD}
 ${negativeBlock}
+${fusionCellBlock}
+${INSUNG_METADATA}
+${creditEnforcementBlock}
 ${officialRegulationBlock}
 ════════════════════════════════════════════════════════════════
 [STEP 1] 교과목 편람 데이터 분석 — 과목 풀 결정 (WEIGHT=HIGH)
@@ -137,16 +200,24 @@ ${studentInfo}
 6. courses 필드 순서: code, name, credits, requirement, target, day, time (모두 필수)
 
 ## 4가지 수강 전략 (각 플랜은 서로 다른 과목 조합으로 구성)
-- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화, 공강일 최대 확보. ${tc}학점.
-- Plan B (도전): 전공심화 + 고난이도 과목 포함, 역량 극대화. ${tc}학점.
-- Plan C (꿀강): 강의평가 우수 과목 중심, GPA 극대화. ${tc}학점.
-- Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최단 경로 최적화. ${tc}학점.
+[목표 학점: 정확히 ${tc}학점 — 미달·초과 모두 불가${requestedCredits ? " (학생 명시 요청값, 절대 고정)" : ""}]
+- Plan A (안정): 학점 관리 최우선, 이수 부담 최소화, 공강일 최대 확보. 정확히 ${tc}학점.
+- Plan B (도전): 전공심화 + 고난이도 과목 포함, 역량 극대화. 정확히 ${tc}학점.
+- Plan C (꿀강): 강의평가 우수 과목 중심, GPA 극대화. 정확히 ${tc}학점.
+- Plan D (전공집중): 전공필수·선택 집중, 졸업요건 최단 경로 최적화. 정확히 ${tc}학점.
 
 ## 공통 지시 사항
 1. 이미지 제공 시: 현재 수강 과목, 공강 시간대, 선호 요일·시간 파악 후 반영
 2. 실제 교과목 편성표에 존재하는 과목만 추천
 3. yearPlan: 1학기(3-6월), 2학기(9-12월) + 12개월 월별 목표 포함
 4. courses 각 항목: code, name, credits, requirement, target, day, time 필수
+5. yearPlan 학년별 맞춤 로드맵 지침:
+   [1학년] 진로 탐색 + 비교과 활동 중심. 3월: 경성대 I-로드맵 기초역량 신청. 9월: 진로 탐색 프로그램 신청.
+   [2학년] 전공 기초 확립 + 융합Cell 이수 설계. 3월: I-로드맵 전공역량 신청. 9월: 전공 심화 세미나 참여.
+   [3학년] 취업 · 창업 준비. 3월: I-로드맵 취창업역량 신청. 상반기 인턴십 지원. 9월: 캡스톤 설계 착수.
+   [4학년] 캡스톤 완성 + 졸업요건 최종 점검. 3월: 졸업논문/프로젝트 착수. 9월: I-로드맵 성과 발표. 졸업 준비.
+   → 학생 학년 정보를 기반으로 해당 학년의 월별 tasks에 I-로드맵 신청 시기와 비교과 활동을 반드시 포함하라.
+${gradeHint ? `\n[학년별 월간 로드맵 참고 데이터]\n${gradeHint}` : ""}
 ${dayNote}
 
 반환 구조 (planA~planD 4개 모두 필수 — 누락 불가):

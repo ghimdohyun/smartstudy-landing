@@ -7,7 +7,7 @@ import Link from "next/link";
 import type { StudyPlanResult } from "@/types";
 import PlanCard from "@/components/PlanCard";
 import YearPlanView from "@/components/YearPlanView";
-import { downloadJSON, downloadCSV, downloadAllPdf } from "@/lib/exportUtils";
+import { downloadJSON, downloadCSV, downloadAllPdf, downloadPng } from "@/lib/exportUtils";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getUniversityConfig } from "@/lib/university-kb";
 import { StudyPlanResultSchema } from "@/lib/validations/study-plan-result";
@@ -388,6 +388,7 @@ function PlanPageInner() {
   /** 0-based index of the currently active Plan tab (A=0 B=1 C=2 D=3) */
   const [activePlanIdx, setActivePlanIdx] = useState(0);
   const [pdfLoading, setPdfLoading] = useState(false);
+  const [pngLoading, setPngLoading] = useState(false);
   const [studentInfo, setStudentInfo] = useState("");
   /** Ref for the capturable plan content area (card + timetable) */
   const planContentRef = useRef<HTMLDivElement>(null);
@@ -580,6 +581,20 @@ function PlanPageInner() {
     }
   };
 
+  const handlePngDownload = async () => {
+    if (pngLoading || !planContentRef.current) return;
+    setPngLoading(true);
+    try {
+      const label = activePlan?.label ?? `Plan ${String.fromCharCode(65 + activePlanIdx)}`;
+      await downloadPng(
+        planContentRef.current,
+        `smartstudy-${label.toLowerCase().replace(/\s+/g, "-")}.png`,
+      );
+    } finally {
+      setPngLoading(false);
+    }
+  };
+
   return (
     <main className="min-h-screen py-8 px-4 bg-gradient-to-br from-blue-50 via-indigo-50 to-violet-50 dark:from-slate-950 dark:via-indigo-950/70 dark:to-violet-950/60">
       {/* 경성대 수강신청 플로팅 버튼 */}
@@ -726,19 +741,34 @@ function PlanPageInner() {
                 ))}
               </div>
 
-              <button
-                type="button"
-                onClick={handlePdfDownload}
-                disabled={pdfLoading}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[12px] font-semibold transition-all
-                           bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700
-                           text-slate-600 dark:text-slate-300
-                           hover:bg-slate-50 dark:hover:bg-slate-800
-                           disabled:opacity-50 disabled:cursor-not-allowed
-                           shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
-              >
-                {pdfLoading ? "생성 중..." : "📄 PDF 다운로드"}
-              </button>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={handlePdfDownload}
+                  disabled={pdfLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[12px] font-semibold transition-all
+                             bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700
+                             text-slate-600 dark:text-slate-300
+                             hover:bg-slate-50 dark:hover:bg-slate-800
+                             disabled:opacity-50 disabled:cursor-not-allowed
+                             shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
+                >
+                  {pdfLoading ? "생성 중..." : "📄 PDF"}
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePngDownload}
+                  disabled={pngLoading}
+                  className="flex items-center gap-1.5 px-4 py-2 rounded-full text-[12px] font-semibold transition-all
+                             bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700
+                             text-slate-600 dark:text-slate-300
+                             hover:bg-slate-50 dark:hover:bg-slate-800
+                             disabled:opacity-50 disabled:cursor-not-allowed
+                             shadow-[0_1px_4px_rgba(15,23,42,0.06)]"
+                >
+                  {pngLoading ? "저장 중..." : "🖼 PNG"}
+                </button>
+              </div>
             </div>
 
             {/* ── Active plan content (capturable via ref) ───────────────── */}

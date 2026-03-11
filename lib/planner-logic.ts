@@ -235,6 +235,8 @@ const YEAR1_EXCLUSIVE_COURSES = [
   "대학생활과 진로", "대학생활과진로", "대학생활과진로탐색",
   "대학영어", "영어회화기초", "영어회화",
   "글쓰기기초", "글쓰기와소통",
+  // QY027045 — 1학년 공통필수: 2학년 이상 플랜에서 제외
+  "인성과성찰", "인성 및 성찰", "인성및성찰",
 ];
 
 /**
@@ -244,6 +246,31 @@ const YEAR1_EXCLUSIVE_COURSES = [
 export function detectStudentYear(studentInfo: string): number | null {
   const match = studentInfo.match(/([1-4])학년/);
   return match ? parseInt(match[1], 10) : null;
+}
+
+/**
+ * Parse an explicitly requested credit count from studentInfo / timetableInfo.
+ * "21학점" or "21 학점" → 21.  Returns null if not found.
+ * Used to override the university config's default targetCredits with the
+ * student's own requested value (WEIGHT=ABSOLUTE per REQUIRED_STRICT).
+ */
+export function detectRequestedCredits(text: string): number | null {
+  // Match patterns like "21학점", "총 21학점", "21 학점", "학점: 21"
+  const patterns = [
+    /(\d{1,2})\s*학점\s*(으로|을|을\s*목표|을\s*원|이\s*원|이\s*목표)/,
+    /총\s*(\d{1,2})\s*학점/,
+    /(\d{1,2})\s*학점\s*(?:신청|등록|이수|수강)/,
+    /(\d{1,2})\s*학점/,
+  ];
+  for (const re of patterns) {
+    const m = text.match(re);
+    if (m) {
+      const n = parseInt(m[1], 10);
+      // Sanity-check: valid semester credit range
+      if (n >= 9 && n <= 24) return n;
+    }
+  }
+  return null;
 }
 
 /**
@@ -441,6 +468,63 @@ export function generateFourScenarios(
       conflicts,
     };
   });
+}
+
+// ─── Grade-Year Roadmap Hint Builder ─────────────────────────────────────────
+
+/**
+ * Build a grade-level yearly roadmap hint for injection into AI prompts.
+ * Reflects 경성대 역량개발시스템(I-로드맵) application windows (March / September).
+ */
+export function buildGradeYearPlanHint(studentYear: number | null): string {
+  if (!studentYear) return "";
+
+  const baseMonths: Record<number, string> = {
+    1:  "자기계발 계획서 작성 + 기초역량 강화",
+    2:  "수강신청 완료 + 개강 준비",
+    3:  "I-로드맵 신청 + 수강 루틴 정착",
+    4:  "중간고사 준비 + 전공 교수 면담",
+    5:  "팀 프로젝트 완료 + 성적 관리",
+    6:  "기말고사 + 다음 학기 수강 계획 초안",
+    7:  "여름방학 자기계발 (자격증·대외활동)",
+    8:  "2학기 수강신청 완료 + 인턴십·대외활동",
+    9:  "I-로드맵 2차 신청 + 2학기 루틴 정착",
+    10: "전공 심화 학습 + 중간고사 준비",
+    11: "취업 박람회·진로 세미나 참가 + 기말고사 준비",
+    12: "기말고사 + 1년 회고 + 다음 학년 목표 수립",
+  };
+
+  const gradeSpecific: Record<number, Partial<Record<number, string>>> = {
+    1: {
+      3:  "I-로드맵 기초역량 과정 신청 (3월 개강 직후) + 전공 탐색 세미나 참가",
+      9:  "I-로드맵 진로 탐색 프로그램 신청 + 학과 멘토링 신청",
+    },
+    2: {
+      3:  "I-로드맵 전공역량 과정 신청 + 융합Cell(인문사회·예술창작) 수강 계획 확정",
+      9:  "I-로드맵 전공 심화 세미나 신청 + 학술 소모임 참여",
+    },
+    3: {
+      3:  "I-로드맵 취창업역량 과정 신청 + 상반기 인턴십 지원 시작",
+      6:  "인턴십 지원 마감 체크 + 캡스톤 사전 조사",
+      9:  "캡스톤 설계 착수 + 취업 스터디 개설",
+      11: "취업 박람회 참가 필수 + 포트폴리오 초안 완성",
+    },
+    4: {
+      3:  "졸업논문/캡스톤 착수 + I-로드맵 최종 성과 계획 수립",
+      6:  "캡스톤 중간 발표 + 취업 최종 서류 준비",
+      9:  "I-로드맵 성과 발표 신청 + 졸업요건 최종 점검",
+      12: "졸업 심사 완료 + 취업·진로 확정",
+    },
+  };
+
+  const yearMap = gradeSpecific[studentYear] ?? {};
+  const lines: string[] = [`[${studentYear}학년 맞춤 월별 로드맵 — 경성대 I-로드맵 연계]`];
+  for (let m = 1; m <= 12; m++) {
+    const base = baseMonths[m] ?? "";
+    const extra = yearMap[m] ?? "";
+    lines.push(`  ${m}월: ${extra ? extra + " / " : ""}${base}`);
+  }
+  return lines.join("\n");
 }
 
 // ─── Plan Annotation ──────────────────────────────────────────────────────────
