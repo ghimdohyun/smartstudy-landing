@@ -4,6 +4,7 @@
 
 import type { Course, StudyPlan } from "@/types";
 import type { CourseRule } from "@/lib/university-kb";
+import { getCoreCoursesForYear, getElectiveCoursesForYear } from "@/lib/data/ksu-sw";
 
 // ─── Time Normalization (timetable-wizard: toMinutes) ────────────────────────
 
@@ -525,6 +526,266 @@ export function buildGradeYearPlanHint(studentYear: number | null): string {
     lines.push(`  ${m}월: ${extra ? extra + " / " : ""}${base}`);
   }
   return lines.join("\n");
+}
+
+// ─── Blocked Time Slots — Vision Grid Analysis ────────────────────────────────
+
+/**
+ * 에브리타임 이미지에서 추출된 현재 수강 과목 → 차단된 시간 슬롯 변환.
+ * AI가 반환한 courses 배열을 구체적인 시간 간격(분 단위)으로 변환한다.
+ */
+export interface BlockedTimeSlot {
+  /** 요일 (한글 단일문자: 월화수목금) */
+  day: string;
+  /** 시작 시각 (minutes since midnight) */
+  startMin: number;
+  /** 종료 시각 (minutes since midnight, exclusive) */
+  endMin: number;
+  /** 슬롯 출처: current_course = 현재 수강 중, preference = 공강 희망 */
+  source: "current_course" | "preference";
+  /** 해당 시간대 과목명 (current_course인 경우) */
+  courseName?: string;
+}
+
+/**
+ * buildBlockedTimeSlots
+ * 이미 수강 중인 과목 목록(vision API 결과) → BlockedTimeSlot[] 변환.
+ * 각 과목의 요일·시간을 개별 슬롯으로 분리한다.
+ * (예: "월수 09:00" → 월 09:00-10:30, 수 09:00-10:30 두 슬롯)
+ */
+export function buildBlockedTimeSlots(enrolledCourses: Course[]): BlockedTimeSlot[] {
+  const slots: BlockedTimeSlot[] = [];
+  for (const course of enrolledCourses) {
+    if (!course.day || !course.time) continue;
+    const days  = (course.day.match(/[월화수목금]/g) ?? []);
+    const start = toMinutes(course.time);
+    if (start === null) continue;
+    const end = start + PERIOD_MINS;
+    for (const day of days) {
+      slots.push({ day, startMin: start, endMin: end, source: "current_course", courseName: course.name });
+    }
+  }
+  return slots;
+}
+
+/**
+ * addOffDayPreference
+ * 공강 희망 요일을 전일 차단 슬롯으로 추가한다.
+ * "금" → 금요일 08:00–22:00 블록 생성.
+ */
+export function addOffDayPreference(
+  slots: BlockedTimeSlot[],
+  preferOffDay: string,
+): BlockedTimeSlot[] {
+  const day = preferOffDay.replace("요일", "").trim();
+  if (!ALL_DAYS.includes(day as (typeof ALL_DAYS)[number])) return slots;
+  return [
+    ...slots,
+    { day, startMin: 8 * 60, endMin: 22 * 60, source: "preference" },
+  ];
+}
+
+/**
+ * detectOffDayPreference
+ * 에브리타임 이미지에서 수업이 없는 요일을 공강일 후보로 감지.
+ * enrolledCourses에서 사용된 요일 집합을 구하고 비어 있는 평일을 반환한다.
+ */
+export function detectOffDayPreference(enrolledCourses: Course[]): string | null {
+  const activeDays = new Set<string>();
+  for (const c of enrolledCourses) {
+    if (!c.day) continue;
+    for (const d of (c.day.match(/[월화수목금]/g) ?? [])) activeDays.add(d);
+  }
+  for (const day of ALL_DAYS) {
+    if (!activeDays.has(day)) return day;
+  }
+  return null;
+}
+
+/**
+ * isBlockedSlotConflict
+ * 특정 과목이 차단된 시간 슬롯과 겹치는지 검사.
+ * 겹침 조건: 같은 요일 AND (aStart < bEnd) AND (bStart < aEnd)
+ */
+function isBlockedSlotConflict(course: Course, blocked: BlockedTimeSlot[]): boolean {
+  if (!course.day || !course.time) return false;
+  const days  = (course.day.match(/[월화수목금]/g) ?? []) as string[];
+  const start = toMinutes(course.time);
+  if (start === null) return false;
+  const end = start + PERIOD_MINS;
+  for (const slot of blocked) {
+    if (days.includes(slot.day) && start < slot.endMin && slot.startMin < end) return true;
+  }
+  return false;
+}
+
+/**
+ * filterByBlockedSlots
+ * 후보 과목 목록에서 차단된 시간대 또는 공강 희망 요일에 겹치는 과목을 제거한다.
+ * day/time 정보가 없는 과목은 통과 (나중에 가상 배정).
+ */
+export function filterByBlockedSlots(
+  candidates: Course[],
+  blocked: BlockedTimeSlot[],
+  preferOffDay?: string,
+): Course[] {
+  const offDay = preferOffDay?.replace("요일", "").trim();
+  return candidates.filter((c) => {
+    if (offDay && c.day && ((c.day.match(/[월화수목금]/g) ?? []) as string[]).includes(offDay)) return false;
+    if (blocked.length > 0 && isBlockedSlotConflict(c, blocked)) return false;
+    return true;
+  });
+}
+
+// ─── Constraint-Aware Planner — 메인 스케줄링 알고리즘 ──────────────────────
+
+export type PlanVariant = "stable" | "challenge" | "easy" | "major";
+
+export interface ConstraintPlanInput {
+  /** 감지된 학년 (KSU SOT 과목 풀 결정에 사용) */
+  year: number;
+  /** 감지된 학기 (미감지 시 undefined → 전체 학기 과목 사용) */
+  semester?: 1 | 2;
+  /** 목표 학점 (예: 21) */
+  targetCredits: number;
+  /** 에브리타임에서 추출한 차단 시간 슬롯 */
+  blockedSlots: BlockedTimeSlot[];
+  /** 공강 희망 요일 (예: "금") */
+  preferOffDay?: string;
+  /** 플랜 변형: stable=부담 최소, challenge=심화, easy=꿀강, major=전공집중 */
+  variant?: PlanVariant;
+  /** 외부 추가 교양 과목 풀 (AI 생성 또는 PDF 추출) */
+  extraCourses?: Course[];
+}
+
+/**
+ * buildConstraintAwarePlan
+ *
+ * blockedTimeSlots와 공강 희망 조건을 피해 21학점을 빈틈없이 채우는 알고리즘.
+ *
+ * 우선순위:
+ *   1. KSU SOT 전공필수/전공기초 (isCore=true) — 최우선 고정
+ *   2. 융합Cell 인문사회 1과목 (3학점)
+ *   3. 융합Cell 예술창작 1과목 (3학점)
+ *   4. KSU SOT 전공선택 (variant별 순서 조정)
+ *   5. extraCourses (AI/PDF 결과)
+ *
+ * 각 단계에서 filterByBlockedSlots 적용 → 충돌 없는 과목만 선택.
+ */
+export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
+  const {
+    year, semester, targetCredits, blockedSlots,
+    preferOffDay, variant = "stable", extraCourses = [],
+  } = input;
+
+  // ── Fusion Cell 상수 (공과대학 필수) ──────────────────────────────────────
+  const FUSION_HUM: Course[] = [
+    { code: "GE-HC101", name: "인문고전읽기와창의적소통",    credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "화목", time: "13:30" },
+    { code: "GE-WC101", name: "영화로보는서양문화사이야기", credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "월수", time: "13:30" },
+    { code: "GE-DB101", name: "디지털과비즈니스",            credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "화목", time: "15:00" },
+  ];
+  const FUSION_ART: Course[] = [
+    { code: "GE-DC101", name: "디자인커넥션",      credits: 3, requirement: "예술창작(융합Cell)", target: "전체", day: "월수", time: "15:00" },
+    { code: "GE-DT101", name: "창의적디자인씽킹", credits: 3, requirement: "예술창작(융합Cell)", target: "전체", day: "화목", time: "10:30" },
+  ];
+
+  // ── 슬롯: 공강 희망을 전일 차단으로 추가 ──────────────────────────────────
+  const allBlocked = preferOffDay
+    ? addOffDayPreference(blockedSlots, preferOffDay)
+    : blockedSlots;
+
+  // ── 과목 풀 로드 (KSU SOT) ──────────────────────────────────────────────
+  const rawCore   = getCoreCoursesForYear(year, semester) as Course[];
+  const rawElect  = getElectiveCoursesForYear(year, semester) as Course[];
+
+  // variant별 전공선택 순서
+  const orderedElect = variant === "challenge"
+    ? [...rawElect].reverse()          // 심화: 뒤에서부터 (고학년 과목 우선)
+    : variant === "easy"
+      ? rawElect.filter((c) => !c.isPrerequisite) // 꿀강: 선수과목 없는 것 우선
+      : rawElect;                                  // stable/major: 기본 순서
+
+  // ── 충돌 필터 적용 ──────────────────────────────────────────────────────
+  const availCore   = filterByBlockedSlots(rawCore,      allBlocked, preferOffDay);
+  const availElect  = filterByBlockedSlots(orderedElect, allBlocked, preferOffDay);
+  const availExtra  = filterByBlockedSlots(extraCourses, allBlocked, preferOffDay);
+  const availHum    = filterByBlockedSlots(FUSION_HUM,   allBlocked, preferOffDay);
+  const availArt    = filterByBlockedSlots(FUSION_ART,   allBlocked, preferOffDay);
+
+  const plan: Course[] = [];
+  let credits = 0;
+
+  // ── 과목 추가 헬퍼 ───────────────────────────────────────────────────────
+  const add = (c: Course): boolean => {
+    const cr = c.credits ?? 3;
+    if (credits + cr > targetCredits) return false;
+    if (plan.some((p) => p.code === c.code || p.name === c.name)) return false;
+    // 내부 시간 충돌 검사 — 충돌 시 day/time 제거 후 가상 배정 대상으로 추가
+    const inner = checkTimeConflict([...plan, c]);
+    if (inner.length > 0 && c.day && c.time) {
+      return add({ ...c, day: undefined, time: undefined });
+    }
+    plan.push(c);
+    credits += cr;
+    return true;
+  };
+
+  // ── 1단계: 전공필수/전공기초 ──────────────────────────────────────────────
+  for (const c of availCore) add(c);
+
+  // ── 2단계: 융합Cell 인문사회 (1과목) ─────────────────────────────────────
+  if (!plan.some((c) => c.requirement?.includes("인문사회(융합Cell)"))) {
+    for (const h of availHum) { if (add(h)) break; }
+  }
+
+  // ── 3단계: 융합Cell 예술창작 (1과목) ─────────────────────────────────────
+  if (!plan.some((c) => c.requirement?.includes("예술창작(융합Cell)"))) {
+    for (const a of availArt) { if (add(a)) break; }
+  }
+
+  // ── 4단계: 전공선택 ──────────────────────────────────────────────────────
+  for (const c of availElect) {
+    if (credits >= targetCredits) break;
+    add(c);
+  }
+
+  // ── 5단계: extraCourses (AI/PDF 결과) ────────────────────────────────────
+  for (const c of availExtra) {
+    if (credits >= targetCredits) break;
+    add(c);
+  }
+
+  // ── 6단계: 여전히 부족하면 blocked 무시하고 전공선택 강제 충전 ─────────────
+  if (credits < targetCredits) {
+    for (const c of rawElect) {
+      if (credits >= targetCredits) break;
+      add({ ...c, day: undefined, time: undefined }); // 가상 배정 대상으로
+    }
+  }
+
+  console.info(
+    `[buildConstraintAwarePlan] year=${year} variant=${variant} ` +
+    `blocked=${blockedSlots.length}슬롯 offDay=${preferOffDay ?? "없음"} ` +
+    `→ ${plan.length}과목 ${credits}학점 (목표:${targetCredits})`,
+  );
+
+  return plan;
+}
+
+/**
+ * buildFourConstraintPlans
+ * buildConstraintAwarePlan을 4가지 variant로 실행하여
+ * Plan A(stable) / B(challenge) / C(easy) / D(major) 반환.
+ */
+export function buildFourConstraintPlans(
+  baseInput: Omit<ConstraintPlanInput, "variant">,
+): Record<"planA" | "planB" | "planC" | "planD", Course[]> {
+  return {
+    planA: buildConstraintAwarePlan({ ...baseInput, variant: "stable" }),
+    planB: buildConstraintAwarePlan({ ...baseInput, variant: "challenge" }),
+    planC: buildConstraintAwarePlan({ ...baseInput, variant: "easy" }),
+    planD: buildConstraintAwarePlan({ ...baseInput, variant: "major" }),
+  };
 }
 
 // ─── Plan Annotation ──────────────────────────────────────────────────────────

@@ -6,6 +6,11 @@ import Groq from "groq-sdk";
 import { buildPlanPromptRules, getUniversityConfig } from "@/lib/university-kb";
 import { stripCjkNoise, detectStudentYear, hardFilterCoursesByYear, buildGradeYearPlanHint, detectRequestedCredits } from "@/lib/planner-logic";
 import type { Course } from "@/types";
+import {
+  getCoreCoursesForYear,
+  getElectiveCoursesForYear,
+  buildKsuSotBlock,
+} from "@/lib/data/ksu-sw";
 
 // ─── Config ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +106,8 @@ export function buildPrompt(
   timetableInfo: string,
   universityId?: string,
   pdfKnowledge?: string,
+  blockedSlots?: Array<{ day: string; startMin: number; endMin: number; source: string; courseName?: string }>,
+  preferOffDay?: string,
 ): string {
   const config = getUniversityConfig(universityId);
   const universityRules = buildPlanPromptRules(config);
@@ -114,6 +121,31 @@ export function buildPrompt(
   const negativeBlock = buildNegativeCoursesBlock(studentInfo);
   const detectedYear = detectStudentYear(studentInfo);
   const gradeHint = buildGradeYearPlanHint(detectedYear);
+
+  // 학기 감지 — "1학기" / "2학기" 텍스트 파싱
+  const semesterMatch = (studentInfo + " " + timetableInfo).match(/([12])학기/);
+  const detectedSemester = semesterMatch ? (parseInt(semesterMatch[1], 10) as 1 | 2) : undefined;
+
+  // 차단 시간 슬롯 프롬프트 블록 (에브리타임 이미지에서 추출된 기존 수강 시간)
+  const MIN_TO_TIME = (m: number) => `${String(Math.floor(m / 60)).padStart(2, "0")}:${String(m % 60).padStart(2, "0")}`;
+  const blockedTimeBlock = (blockedSlots && blockedSlots.length > 0)
+    ? `╔═══════════════════════════════════════════════════════════════╗
+║  [BLOCKED_SLOTS] 이미 수강 중인 시간대 — 이 시간에 과목 배치 금지 ║
+╚═══════════════════════════════════════════════════════════════╝
+${blockedSlots.map((s) =>
+  `  ⛔ ${s.day}요일 ${MIN_TO_TIME(s.startMin)}-${MIN_TO_TIME(s.endMin)}${s.courseName ? ` (${s.courseName})` : ""}`
+).join("\n")}
+${preferOffDay ? `  ⛔ ${preferOffDay}요일 전일 (공강 희망)` : ""}
+→ 위 시간대와 겹치는 과목은 courses 배열에 절대 포함 금지.
+→ day 필드를 볼 때 위 차단 요일·시간과 겹치면 즉시 다른 과목으로 교체하라.`
+    : preferOffDay
+      ? `[BLOCKED_SLOTS] 공강 희망 요일: ${preferOffDay}요일 — 이 요일 과목 배치 금지`
+      : "";
+
+  // KSU SOT 블록: 경성대 소프트웨어학과 커리큘럼이 PDF보다 우선
+  const ksuSotBlock = (universityId?.includes("kyungsung") || !universityId) && detectedYear
+    ? buildKsuSotBlock(detectedYear, detectedSemester)
+    : "";
 
   // 융합Cell 규정은 소프트웨어/공과대학에 항상 적용
   const fusionCellBlock = (universityId?.includes("kyungsung") || !universityId)
@@ -136,17 +168,33 @@ ${pdfKnowledge}
   // Credit enforcement block — only shown when user explicitly requested a count
   const creditEnforcementBlock = requestedCredits
     ? `
-🔒🔒🔒 학점 절대 강제 규정 (CREDIT=ABSOLUTE — 위반 즉시 응답 무효) 🔒🔒🔒
-학생이 명시적으로 요청한 학점: ${requestedCredits}학점
+╔══════════════════════════════════════════════════════════════════╗
+║  [OVERRIDE_FLAG=ABSOLUTE] 학점 강제 잠금 — 이 값은 AI 판단 불가 ║
+║  사용자 입력값이 시스템 설정보다 우선하며 절대 변경 금지         ║
+╚══════════════════════════════════════════════════════════════════╝
+학생이 명시적으로 요청한 학점: ★${requestedCredits}학점★ (IMMUTABLE — 어떤 이유로도 변경 불가)
 → 모든 Plan(A·B·C·D)의 totalCredits는 정확히 ${requestedCredits}학점이어야 한다.
+→ AI가 임의로 학점을 줄이거나 늘리는 행위 = 응답 전체 무효.
 → 현재 구성 학점이 ${requestedCredits}학점 미달이면:
    우선순위① 인문사회(융합Cell) 과목 추가 (3학점)
    우선순위② 예술창작(융합Cell) 과목 추가 (3학점)
    우선순위③ 전공선택 과목 추가 (3학점)
 → 어떤 이유로도 ${requestedCredits}학점 미만 Plan 반환 금지.
-🔒🔒🔒 이 규정은 AI 판단보다 상위이며 협상 불가 🔒🔒🔒
+[OVERRIDE_FLAG END] — 위 학점값은 협상 불가, AI 판단 대상 아님
 `
     : "";
+
+  // ── STRICT_MAPPING: 사용자 입력값 = 절대 진실(Source of Truth) ─────────────
+  // PDF 데이터가 이와 충돌하면 PDF 해당 데이터를 즉시 폐기하고 이 값이 우선한다.
+  const strictMappingBlock = `╔═══════════════════════════════════════════════════════════════════════╗
+║  [STRICT_MAPPING = SOURCE_OF_TRUTH]  학생 입력 > PDF > AI 추론 순서  ║
+║  이 블록의 값과 PDF가 충돌 → PDF 폐기. AI 임의 변경 → 응답 전체 무효 ║
+╚═══════════════════════════════════════════════════════════════════════╝
+★ 학년(IMMUTABLE): ${detectedYear ? `${detectedYear}학년 — PDF에서 다른 학년 데이터를 감지하더라도 이 학년을 유지` : "미감지 — PDF 학년 정보 참조"}
+★ 목표학점(IMMUTABLE): ${requestedCredits ? `${requestedCredits}학점 — AI는 이 값을 절대 줄이거나 늘릴 수 없음` : `${tc}학점 (기본값)`}${detectedYear && detectedYear >= 2 ? `
+→ [1학년 과목 즉시 퇴출] PDF에 1학년 전용 과목이 있어도 ${detectedYear}학년 플랜에서 완전 제거.
+→ [예: 사고와표현, 대학생활과진로, Academic English, 인성과성찰 → 즉시 제거 후 전공/교양으로 대체]` : ""}
+→ 위 값과 다른 방향으로 AI가 판단하는 행위는 REQUIRED_STRICT 위반으로 응답 전체 무효.`;
 
   // 인성과성찰(QY027045) 지식 베이스 주입 — 1학년 전용 과목 강제 명시
   const INSUNG_METADATA = `
@@ -161,6 +209,9 @@ ${pdfKnowledge}
 [REQUIRED_STRICT MODE — 아래 모든 원칙은 협상 불가, 위반 시 응답 전체 무효]
 
 ${PRIVACY_SHIELD}
+${strictMappingBlock}
+${blockedTimeBlock}
+${ksuSotBlock}
 ${negativeBlock}
 ${fusionCellBlock}
 ${INSUNG_METADATA}
@@ -382,7 +433,7 @@ async function callGroqVisionOnce(
   const completion = await groq!.chat.completions.create({
     model: VISION_MODEL,
     messages,
-    temperature: 0.25,
+    temperature: 0,   // [OVERRIDE_FLAG] temperature=0 → 결과 일관성 강제
     max_tokens: 4096,
     response_format: { type: "json_object" },
   });
@@ -442,19 +493,23 @@ ${coreRules}
 //            images[5..9]  → Batch 1: context-merge          (교양 편성표 등 보조)
 //            images[10..N] → Batch N: final context-merge
 //
+type BlockedSlotsParam = Array<{ day: string; startMin: number; endMin: number; source: string; courseName?: string }>;
+
 async function callGroqVision(
   studentInfo: string,
   timetableInfo: string,
   imageUrl: string,
   universityId?: string,
   pdfKnowledge?: string,
+  blockedSlots?: BlockedSlotsParam,
+  preferOffDay?: string,
 ): Promise<unknown> {
   const allUrls = splitImageUrls(imageUrl);
 
   // ── Single-batch path (≤5 images): one API call ──
   if (allUrls.length <= VISION_BATCH_SIZE) {
     const content: Groq.Chat.ChatCompletionContentPart[] = [
-      { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge) },
+      { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge, blockedSlots, preferOffDay) },
       ...allUrls.map((url): Groq.Chat.ChatCompletionContentPart => ({
         type: "image_url",
         image_url: { url },
@@ -471,7 +526,7 @@ async function callGroqVision(
 
   // Batch 0: Full initial analysis — first 5 images (핵심 전공 편성표 우선)
   const firstContent: Groq.Chat.ChatCompletionContentPart[] = [
-    { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge) },
+    { type: "text", text: buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge, blockedSlots, preferOffDay) },
     ...batches[0].map((url): Groq.Chat.ChatCompletionContentPart => ({
       type: "image_url",
       image_url: { url },
@@ -508,13 +563,15 @@ async function callGroqText(
   timetableInfo: string,
   universityId?: string,
   pdfKnowledge?: string,
+  blockedSlots?: BlockedSlotsParam,
+  preferOffDay?: string,
 ): Promise<unknown> {
-  const prompt = buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge);
+  const prompt = buildPrompt(studentInfo, timetableInfo, universityId, pdfKnowledge, blockedSlots, preferOffDay);
 
   const completion = await groq!.chat.completions.create({
     model: TEXT_MODEL,
     messages: [{ role: "user", content: prompt }],
-    temperature: 0.25,
+    temperature: 0,   // [OVERRIDE_FLAG] temperature=0 → 결과 일관성 강제
     max_tokens: 4096,
     response_format: { type: "json_object" },
   });
@@ -606,6 +663,14 @@ export interface StudyPlanCallParams {
   universityId?: string;
   /** Structured PDF knowledge — injected as 학교 공식 규정 */
   pdfKnowledge?: string;
+  /**
+   * 에브리타임 vision 분석에서 추출한 차단 시간 슬롯 배열.
+   * type=vision 응답의 blockedTimeSlots 필드를 그대로 전달.
+   * AI 프롬프트에 주입되어 해당 시간대 과목 추천을 명시적으로 배제한다.
+   */
+  blockedSlots?: Array<{ day: string; startMin: number; endMin: number; source: string; courseName?: string }>;
+  /** 공강 희망 요일 (예: "금") */
+  preferOffDay?: string;
 }
 
 /**
@@ -647,6 +712,226 @@ function ensureFourPlans(result: Record<string, unknown>): Record<string, unknow
       console.warn(`[ensureFourPlans] ${key} missing from AI response — using demo fallback`);
     }
   }
+  return out;
+}
+
+// ─── 융합Cell 강제 주입 — 공과대학 소프트웨어학과 필수 이수 ───────────────────
+
+/** 인문사회 영역 3종 (인문고전읽기 등) — 학년·플랜별 로테이션 */
+const FUSION_HUMANITIES_POOL: Course[] = [
+  { code: "GE-HC101", name: "인문고전읽기와창의적소통",    credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "화목", time: "13:30" },
+  { code: "GE-WC101", name: "영화로보는서양문화사이야기", credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "월수", time: "13:30" },
+  { code: "GE-DB101", name: "디지털과비즈니스",            credits: 3, requirement: "인문사회(융합Cell)", target: "전체", day: "화목", time: "15:00" },
+];
+
+/** 예술창작 영역 2종 */
+const FUSION_ARTS_POOL: Course[] = [
+  { code: "GE-DC101", name: "디자인커넥션",        credits: 3, requirement: "예술창작(융합Cell)", target: "전체", day: "월수", time: "15:00" },
+  { code: "GE-DT101", name: "창의적디자인씽킹",   credits: 3, requirement: "예술창작(융합Cell)", target: "전체", day: "화목", time: "10:30" },
+];
+
+/**
+ * 융합Cell 강제 주입 알고리즘 (공과대학·소프트웨어학과 전용).
+ * 각 Plan에서 인문사회(융합Cell) + 예술창작(융합Cell) 과목이 없으면:
+ * 1. 비필수 과목(교양선택/공통선택) 1개를 제거하고 해당 과목으로 교체
+ * 2. 비필수 과목이 없으면 그냥 추가 (학점 초과 허용 — 규정 준수 우선)
+ */
+function enforceFusionCell(result: Record<string, unknown>): Record<string, unknown> {
+  const planKeys = ["planA", "planB", "planC", "planD"] as const;
+  const out = { ...result };
+
+  const isEssential = (c: Course): boolean =>
+    Boolean(c.requirement?.includes("필수") || c.requirement?.includes("전공") || c.requirement?.includes("융합Cell"));
+
+  for (let i = 0; i < planKeys.length; i++) {
+    const key  = planKeys[i];
+    const plan = out[key] as Record<string, unknown> | undefined;
+    if (!plan || !Array.isArray(plan.courses)) continue;
+
+    let courses = [...(plan.courses as Course[])];
+
+    const hasHumanities = courses.some(
+      (c) => c.requirement?.includes("인문사회(융합Cell)") ||
+             c.name?.includes("인문고전") || c.name?.includes("서양문화사") || c.name?.includes("디지털과비즈니스"),
+    );
+    const hasArts = courses.some(
+      (c) => c.requirement?.includes("예술창작(융합Cell)") ||
+             c.name?.includes("디자인커넥션") || c.name?.includes("창의적디자인씽킹"),
+    );
+
+    const inject = (pool: Course[], planIdx: number) => {
+      const candidate = pool[planIdx % pool.length];
+      const lastNonEssential = (() => {
+        for (let j = courses.length - 1; j >= 0; j--) {
+          if (!isEssential(courses[j])) return j;
+        }
+        return -1;
+      })();
+      if (lastNonEssential !== -1) courses.splice(lastNonEssential, 1);
+      courses.push(candidate);
+    };
+
+    if (!hasHumanities) { inject(FUSION_HUMANITIES_POOL, i); }
+    if (!hasArts)        { inject(FUSION_ARTS_POOL, i); }
+
+    if (!hasHumanities || !hasArts) {
+      const newTotal = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
+      out[key] = { ...plan, courses, totalCredits: newTotal };
+      console.info(`[enforceFusionCell] ${key}: 융합Cell 주입 — humanities=${!hasHumanities}, arts=${!hasArts}`);
+    }
+  }
+  return out;
+}
+
+// ─── 학점 강제 충전 루프 (Deterministic Credit Fill) ─────────────────────────
+
+/**
+ * 학점이 목표치에 미달할 경우 필사적으로 과목을 추가해 채우는 강제 루프.
+ * 우선순위: 융합Cell(인문) → 융합Cell(예술) → 전공선택 보충 → 교양선택 보충
+ * AI가 오류를 뱉는 대신, 항상 완성된 학점으로 응답 보장.
+ */
+const CREDIT_FILL_POOL: Course[] = [
+  ...FUSION_HUMANITIES_POOL,
+  ...FUSION_ARTS_POOL,
+  { code: "EO-SUP-01", name: "전공심화 보충과목 I",  credits: 3, requirement: "전공선택", target: "전체", day: "월", time: "16:30" },
+  { code: "EO-SUP-02", name: "전공심화 보충과목 II", credits: 3, requirement: "전공선택", target: "전체", day: "수", time: "16:30" },
+  { code: "GE-SUP-01", name: "교양선택 보충과목 I",  credits: 3, requirement: "교양선택", target: "전체", day: "화", time: "16:30" },
+  { code: "GE-SUP-02", name: "교양선택 보충과목 II", credits: 3, requirement: "교양선택", target: "전체", day: "목", time: "16:30" },
+];
+
+function enforceTargetCredits(
+  result: Record<string, unknown>,
+  targetCredits: number,
+): Record<string, unknown> {
+  if (!targetCredits || targetCredits <= 0) return result;
+  const planKeys = ["planA", "planB", "planC", "planD"] as const;
+  const out = { ...result };
+
+  for (let planIdx = 0; planIdx < planKeys.length; planIdx++) {
+    const key  = planKeys[planIdx];
+    const plan = out[key] as Record<string, unknown> | undefined;
+    if (!plan || !Array.isArray(plan.courses)) continue;
+
+    const courses = [...(plan.courses as Course[])];
+    let current   = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
+    if (current >= targetCredits) continue;
+
+    console.warn(
+      `[enforceTargetCredits] ${key}: ${current}학점 미달 (목표 ${targetCredits}학점) — 강제 충전 루프 시작`,
+    );
+
+    let poolIdx  = planIdx;
+    let attempts = 0;
+    while (current < targetCredits && attempts < 12) {
+      const candidate = CREDIT_FILL_POOL[poolIdx % CREDIT_FILL_POOL.length];
+      const isDup = courses.some(
+        (c) => c.name === candidate.name || (c.code && candidate.code && c.code === candidate.code),
+      );
+      if (!isDup) {
+        courses.push(candidate);
+        current += candidate.credits ?? 3;
+        console.info(`  [fill+] ${candidate.name} → 누적 ${current}학점`);
+      }
+      poolIdx++;
+      attempts++;
+    }
+
+    out[key] = { ...plan, courses, totalCredits: current };
+    console.info(`[enforceTargetCredits] ${key}: 충전 완료 → ${current}학점 (${courses.length}과목)`);
+  }
+  return out;
+}
+
+// ─── KSU SOT 시드 주입 (post-processing) ─────────────────────────────────────
+
+/**
+ * seedKsuCoursesIntoPlans
+ *
+ * AI 응답이 확정된 후, 경성대 소프트웨어학과 핵심 과목(전공필수/전공기초)이
+ * 각 플랜에 빠져 있으면 최상단에 강제 삽입한다.
+ *
+ * 알고리즘:
+ *  1. 감지된 학년의 isCore=true 과목 목록을 SOT에서 로드
+ *  2. 각 Plan에서 해당 과목(code 일치)이 없으면 최상단에 추가
+ *  3. 추가된 학점만큼 마지막 비필수 과목을 제거하여 총학점을 targetCredits로 유지
+ *  4. 교체 불가능한 경우 그냥 추가 (학점 초과 허용 — 필수 과목 누락이 더 심각)
+ */
+function seedKsuCoursesIntoPlans(
+  result: Record<string, unknown>,
+  studentInfo: string,
+  timetableInfo: string,
+): Record<string, unknown> {
+  const year = detectStudentYear(studentInfo);
+  if (!year) return result; // 학년 미감지 시 스킵
+
+  const semesterMatch = (studentInfo + " " + timetableInfo).match(/([12])학기/);
+  const semester = semesterMatch ? (parseInt(semesterMatch[1], 10) as 1 | 2) : undefined;
+
+  // 핵심 시드 과목 — 전공필수/전공기초
+  const seedCores = getCoreCoursesForYear(year, semester);
+  // 학점 채우기용 보조 전공선택 과목
+  const seedElects = getElectiveCoursesForYear(year, semester);
+
+  if (seedCores.length === 0) return result;
+
+  const requestedCr = detectRequestedCredits(studentInfo + " " + timetableInfo);
+  const targetCr    = requestedCr ?? 21;
+
+  const isEssential = (c: Course) =>
+    Boolean(c.requirement?.includes("필수") || c.requirement?.includes("전공") || c.requirement?.includes("융합Cell"));
+
+  const planKeys = ["planA", "planB", "planC", "planD"] as const;
+  const out = { ...result };
+
+  for (let planIdx = 0; planIdx < planKeys.length; planIdx++) {
+    const key  = planKeys[planIdx];
+    const plan = out[key] as Record<string, unknown> | undefined;
+    if (!plan || !Array.isArray(plan.courses)) continue;
+
+    let courses = [...(plan.courses as Course[])];
+    const existingCodes = new Set(courses.map((c) => c.code?.toUpperCase()).filter(Boolean));
+
+    // 누락된 핵심 과목 파악
+    const missingSeed = seedCores.filter(
+      (s) => s.code && !existingCodes.has(s.code.toUpperCase()),
+    );
+
+    if (missingSeed.length === 0) continue;
+
+    // 각 누락 과목을 앞에서 삽입, 비필수 과목 1개 제거로 학점 유지
+    for (const seed of missingSeed) {
+      // 마지막 비필수 과목 제거
+      const lastNonEssIdx = (() => {
+        for (let j = courses.length - 1; j >= 0; j--) {
+          if (!isEssential(courses[j])) return j;
+        }
+        return -1;
+      })();
+      if (lastNonEssIdx !== -1) courses.splice(lastNonEssIdx, 1);
+      // 최상단 삽입
+      courses.unshift(seed as Course);
+    }
+
+    // 학점이 부족하면 전공선택 보충
+    let current = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
+    let electIdx = planIdx;
+    while (current < targetCr && electIdx < seedElects.length + planIdx + 5) {
+      const candidate = seedElects[electIdx % Math.max(seedElects.length, 1)];
+      const isDup = courses.some((c) => c.code === candidate.code || c.name === candidate.name);
+      if (!isDup) {
+        courses.push(candidate as Course);
+        current += candidate.credits ?? 3;
+      }
+      electIdx++;
+    }
+
+    const newTotal = courses.reduce((s, c) => s + (c.credits ?? 3), 0);
+    out[key] = { ...plan, courses, totalCredits: newTotal };
+    console.info(
+      `[seedKsuCourses] ${key}: ${missingSeed.length}개 SOT 과목 주입 (${missingSeed.map((s) => s.code).join(", ")}) → ${newTotal}학점`,
+    );
+  }
+
   return out;
 }
 
@@ -694,7 +979,7 @@ function denoiseResult(val: unknown): unknown {
 }
 
 export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unknown> {
-  const { studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge } = params;
+  const { studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge, blockedSlots, preferOffDay } = params;
 
   if (pdfKnowledge?.trim()) {
     console.info(
@@ -705,8 +990,8 @@ export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unk
   if (groq) {
     try {
       const result = imageUrl?.trim()
-        ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge)
-        : await callGroqText(studentInfo, timetableInfo, universityId, pdfKnowledge);
+        ? await callGroqVision(studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge, blockedSlots, preferOffDay)
+        : await callGroqText(studentInfo, timetableInfo, universityId, pdfKnowledge, blockedSlots, preferOffDay);
 
       // Fallback: if AI returned empty/malformed JSON, use demo plan rather than crashing
       if (!isValidPlanResult(result)) {
@@ -715,9 +1000,17 @@ export async function callStudyPlanApi(params: StudyPlanCallParams): Promise<unk
       }
       // Guarantee all 4 plan keys exist before returning (REQUIRED_STRICT repair)
       const repaired = ensureFourPlans(result as Record<string, unknown>);
-      // Hard-filter: remove year-mismatched courses (e.g., 1학년 courses for 2학년 student)
-      const yearFiltered = applyYearFilter(repaired, studentInfo);
-      return denoiseResult(yearFiltered);
+      // ① KSU SOT 시드: 핵심 전공과목 최상단 강제 삽입 (PDF보다 로컬 데이터 우선)
+      const ksuSeeded = seedKsuCoursesIntoPlans(repaired, studentInfo, timetableInfo);
+      // ② Hard-filter: 학년 불일치 과목 제거 (1학년 과목 → 2학년 플랜 제거)
+      const yearFiltered = applyYearFilter(ksuSeeded, studentInfo);
+      // ③ 융합Cell 강제 주입: 인문사회(융합Cell) + 예술창작(융합Cell) 반드시 포함
+      const fusionEnforced = enforceFusionCell(yearFiltered);
+      // ④ 학점 강제 충전 루프: 목표 학점 미달 시 과목 풀에서 필사적으로 채움
+      const requestedCr = detectRequestedCredits(studentInfo + " " + timetableInfo);
+      const targetCr    = requestedCr ?? getUniversityConfig(universityId).timetable.targetCredits;
+      const creditFilled = enforceTargetCredits(fusionEnforced, targetCr);
+      return denoiseResult(creditFilled);
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err);
       throw new UpstreamError(500, `Groq API 오류: ${msg}`);
