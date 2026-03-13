@@ -272,11 +272,13 @@ ${gradeHint ? `\n[학년별 월간 로드맵 참고 데이터]\n${gradeHint}` : 
 ${dayNote}
 
 반환 구조 (planA~planD 4개 모두 필수 — 누락 불가):
+※ riskAnalysis: 이 플랜에서 감지된 실제 충돌·위험 항목 (없으면 빈 배열 []).
+   예시: ["금공강 실패 — 자료구조 금요일 배치됨", "연강 2쌍 발생", "전산수학 시간충돌 — 수동 확인 필요"]
 {
-  "planA": { "title": "안정 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
-  "planB": { "title": "도전 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
-  "planC": { "title": "꿀강 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
-  "planD": { "title": "전공집중 전략", "strategy": "", "courses": [], "totalCredits": ${tc} },
+  "planA": { "title": "안정 전략", "strategy": "", "courses": [], "totalCredits": ${tc}, "riskAnalysis": [] },
+  "planB": { "title": "도전 전략", "strategy": "", "courses": [], "totalCredits": ${tc}, "riskAnalysis": [] },
+  "planC": { "title": "꿀강 전략", "strategy": "", "courses": [], "totalCredits": ${tc}, "riskAnalysis": [] },
+  "planD": { "title": "전공집중 전략", "strategy": "", "courses": [], "totalCredits": ${tc}, "riskAnalysis": [] },
   "yearPlan": {
     "semesters": [
       { "semester": "1학기 (3월~6월)", "goal": "", "recommendedCourses": [], "weeklyRoutine": "", "milestones": [],

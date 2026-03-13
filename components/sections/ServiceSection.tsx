@@ -28,10 +28,51 @@ const StudyPlanForm = dynamic(() => import('@/components/StudyPlanForm'), {
 
 // ─── Skeleton while AI is running ────────────────────────────────────────────
 
-function AiAnalysisSkeleton({ status }: { status: string }) {
+import type { PipelineComplexity } from '@/lib/planner-logic';
+
+function AlgorithmPerformanceBadge({ cx }: { cx: PipelineComplexity }) {
+  return (
+    <div className="mt-3 mx-auto max-w-md rounded-xl border border-indigo-200/60
+                    dark:border-indigo-700/40 bg-indigo-50/70 dark:bg-indigo-950/40
+                    px-4 py-2.5 font-mono text-[11px] leading-relaxed
+                    text-indigo-700 dark:text-indigo-300 select-none">
+      <div className="flex items-center gap-1.5 mb-1.5 text-[10px] font-semibold
+                      tracking-widest text-indigo-500 dark:text-indigo-400 uppercase">
+        <span>⚙</span>
+        <span>Algorithm Performance</span>
+      </div>
+      <div className="flex flex-wrap gap-x-3 gap-y-1">
+        <span>
+          Worst-case: <span className="text-violet-600 dark:text-violet-400 font-bold">{cx.formula}</span>
+        </span>
+        <span className="text-indigo-400 dark:text-indigo-600">|</span>
+        <span>
+          n=<span className="text-amber-600 dark:text-amber-400">{cx.n}</span>
+          <span className="text-indigo-400 dark:text-indigo-500"> images</span>
+        </span>
+        <span className="text-indigo-400 dark:text-indigo-600">|</span>
+        <span>
+          m=<span className="text-amber-600 dark:text-amber-400">{cx.m}</span>
+          <span className="text-indigo-400 dark:text-indigo-500"> courses</span>
+        </span>
+        <span className="text-indigo-400 dark:text-indigo-600">|</span>
+        <span>
+          Est. time: <span className="text-emerald-600 dark:text-emerald-400 font-bold">~{cx.estSeconds}s</span>
+        </span>
+      </div>
+      <div className="mt-1.5 text-[10px] text-indigo-400 dark:text-indigo-500 space-y-0.5">
+        {cx.breakdown.map((line, i) => (
+          <div key={i}>{line}</div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function AiAnalysisSkeleton({ status, complexity }: { status: string; complexity: PipelineComplexity | null }) {
   return (
     <div role="status" aria-live="polite" aria-label="AI 분석 중" className="w-full">
-      <div className="flex items-center justify-center gap-2.5 mb-6">
+      <div className="flex items-center justify-center gap-2.5 mb-3">
         <span className="inline-block w-2 h-2 rounded-full bg-indigo-500"
           style={{ animation: 'pulse 1.2s ease-in-out infinite' }} />
         <span className="text-sm font-semibold text-indigo-600 dark:text-indigo-300">
@@ -40,6 +81,10 @@ function AiAnalysisSkeleton({ status }: { status: string }) {
         <span className="inline-block w-2 h-2 rounded-full bg-violet-500"
           style={{ animation: 'pulse 1.2s ease-in-out infinite 0.4s' }} />
       </div>
+
+      {complexity && <AlgorithmPerformanceBadge cx={complexity} />}
+
+      <div className="mt-4" />
 
       <div className="grid grid-cols-2 gap-3 mb-4 sm:grid-cols-4">
         {['Plan A', 'Plan B', 'Plan C', 'Plan D'].map((label) => (
@@ -223,7 +268,7 @@ export default function ServiceSection() {
   const [mounted, setMounted] = useState(false);
 
   const {
-    loading, error, status, generate, retry, clearError,
+    loading, error, status, complexity, generate, retry, clearError,
     upgradeDetail, closeUpgradeModal,
   } = useStudyPlan();
 
@@ -324,7 +369,7 @@ export default function ServiceSection() {
 
           {/* Skeleton while loading, form otherwise */}
           {loading ? (
-            <AiAnalysisSkeleton status={status} />
+            <AiAnalysisSkeleton status={status} complexity={complexity} />
           ) : (
             <div style={{ maxWidth: 640, margin: '0 auto' }}>
               {/* Graduation risk banner — shown immediately when critical courses detected missing */}

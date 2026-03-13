@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import type { StudyPlanInput, StudyPlanResult } from '@/types';
 import { fetchStudyPlan, UpgradeRequiredError, type UpgradeRequiredDetail } from '@/lib/api';
 import { StudyPlanResultSchema, isUsableResult } from '@/lib/validations/study-plan-result';
+import { computePipelineComplexity, type PipelineComplexity } from '@/lib/planner-logic';
 
 // ─── Data versioning ──────────────────────────────────────────────────────────
 // Bump whenever the stored shape changes incompatibly with the current reader.
@@ -128,6 +129,7 @@ export function useStudyPlan() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [status, setStatus] = useState('');
+  const [complexity, setComplexity] = useState<PipelineComplexity | null>(null);
 
   /** Upgrade modal state — null = closed */
   const [upgradeDetail, setUpgradeDetail] = useState<UpgradeRequiredDetail | null>(null);
@@ -167,6 +169,13 @@ export function useStudyPlan() {
     const imageCount = (input.imageUrl ?? '').split('|||').filter(Boolean).length;
     stepsRef.current       = buildLoadingSteps(imageCount);
     stepIntervalRef.current = imageCount > VISION_BATCH_SIZE ? MULTI_STEP_MS : SINGLE_STEP_MS;
+
+    // Compute pipeline complexity upfront so UI can display it immediately
+    const cx = computePipelineComplexity(
+      Math.max(imageCount, 1),   // n: image / page count
+      42,                         // m: KSU SOT 2학년 기본 과목 풀 크기
+    );
+    setComplexity(cx);
 
     const universityId =
       typeof window !== 'undefined'
@@ -249,6 +258,7 @@ export function useStudyPlan() {
     loading,
     error,
     status,
+    complexity,
     generate,
     retry,
     clearError: () => setError(null),

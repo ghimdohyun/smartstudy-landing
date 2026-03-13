@@ -557,10 +557,10 @@ function PlanPageInner() {
   const activePlan = plans[activePlanIdx] ?? plans[0];
 
   const PLAN_META = [
-    { accent: "#3b82f6" },
-    { accent: "#10b981" },
-    { accent: "#a855f7" },
-    { accent: "#f97316" },
+    { accent: "#3b82f6", badge: "안정형"   },
+    { accent: "#10b981", badge: "전공몰입" },
+    { accent: "#a855f7", badge: "공강수호" },
+    { accent: "#f97316", badge: "도전형"   },
   ];
 
   const handlePdfDownload = async () => {

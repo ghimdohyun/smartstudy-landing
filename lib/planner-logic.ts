@@ -318,6 +318,202 @@ export function calculateTotalCredits(courses: Course[]): number {
   return courses.reduce((sum, c) => sum + (c.credits ?? 0), 0);
 }
 
+// ─── Must-Have Courses (2학년 1학기 SOT) ──────────────────────────────────────
+
+/**
+ * 2학년 1학기 소프트웨어학과 Must-Have 과목 (전공기초 필수 3종).
+ * Plan A (stable) 에서 시간충돌이 없는 한 반드시 최우선 포함.
+ */
+export const MUST_HAVE_YEAR2_SEM1_NAMES = ["전산수학", "리눅스시스템", "자료구조"] as const;
+const MUST_HAVE_SET = new Set(MUST_HAVE_YEAR2_SEM1_NAMES as readonly string[]);
+
+function isMustHave(c: Course): boolean {
+  const n = (c.name ?? "").replace(/\s+/g, "");
+  return MUST_HAVE_SET.has(c.name ?? "") || [...MUST_HAVE_SET].some((m) => n.includes(m.replace(/\s+/g, "")));
+}
+
+/**
+ * Sort courses so that Must-Have courses appear first (stable sort).
+ * Used for Plan A (stable) year=2 to guarantee must-haves are picked first.
+ */
+function sortMustHaveFirst(courses: Course[]): Course[] {
+  return [...courses].sort((a, b) => (isMustHave(a) ? 0 : 1) - (isMustHave(b) ? 0 : 1));
+}
+
+// ─── Plan Risk Analyzer ────────────────────────────────────────────────────────
+
+/**
+ * Compute dynamic risk analysis items for a finalized plan.
+ * Returns human-readable Korean strings for UI display.
+ */
+function computePlanRisks(
+  courses: (Course & { _virtual?: boolean })[],
+  preferOffDay?: string,
+  missingMustHaves: string[] = [],
+): string[] {
+  const risks: string[] = [];
+
+  // 1. Off-day preference violation — courses that landed on the requested 공강일
+  if (preferOffDay) {
+    const offDay = preferOffDay.replace("요일", "").trim();
+    const violated = courses.filter(
+      (c) => c.day && !c._virtual && (c.day.match(/[월화수목금]/g) ?? []).includes(offDay),
+    );
+    if (violated.length > 0) {
+      risks.push(`${offDay}공강 실패 — ${violated.map((c) => c.name).join(", ")} 배치됨`);
+    }
+  }
+
+  // 2. Consecutive class pairs (연강) — same day, no gap between slots
+  type DaySlot = { start: number; end: number };
+  const dayMap = new Map<string, DaySlot[]>();
+  for (const c of courses) {
+    const days  = parseDays(c.day ?? "");
+    const start = toMinutes(c.time);
+    if (start === null) continue;
+    for (const day of days) {
+      const slots = dayMap.get(day) ?? [];
+      slots.push({ start, end: start + PERIOD_MINS });
+      dayMap.set(day, slots);
+    }
+  }
+  let consecutivePairs = 0;
+  for (const [, slots] of dayMap) {
+    const sorted = [...slots].sort((a, b) => a.start - b.start);
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i].start === sorted[i - 1].end) consecutivePairs++;
+    }
+  }
+  if (consecutivePairs >= 3) {
+    risks.push(`연강 ${consecutivePairs}쌍 발생 — 집중력 저하 주의`);
+  } else if (consecutivePairs > 0) {
+    risks.push(`연강 ${consecutivePairs}쌍 발생`);
+  }
+
+  // 3. Missing must-have courses (blocked by timetable conflict)
+  for (const name of missingMustHaves) {
+    risks.push(`필수과목 "${name}" 시간충돌 — 수동 확인 필요`);
+  }
+
+  return risks;
+}
+
+// ─── Pool Size Helper (for O(n + m²) complexity display) ─────────────────────
+
+/**
+ * Returns the total available course pool size for a given year/semester.
+ * Used to compute the actual m in O(n + m²) complexity display.
+ */
+export function getActualPoolSize(year: number, semester?: 1 | 2): number {
+  const core  = getCoreCoursesForYear(year, semester) as Course[];
+  const elect = getElectiveCoursesForYear(year, semester) as Course[];
+  return core.length + elect.length;
+}
+
+// ─── Pipeline Complexity Analyzer ────────────────────────────────────────────
+
+export interface PipelineComplexity {
+  /** Big-O notation for the full pipeline worst case */
+  formula: string;
+  /** Number of images / PDF pages (n) */
+  n: number;
+  /** Estimated course pool size (m) */
+  m: number;
+  /** Abstract worst-case operation count */
+  worstCaseOps: number;
+  /** Estimated wall-clock time in seconds */
+  estSeconds: number;
+  /** Human-readable per-stage breakdown */
+  breakdown: string[];
+}
+
+/**
+ * Compute worst-case time complexity and estimated wall-clock seconds
+ * for the full SmartStudy pipeline.
+ *
+ * Pipeline stages:
+ *  1. Vision OCR (Groq)       — O(n)      batched by 5, ~3.5s/batch
+ *  2. Curriculum dedup        — O(m log m)
+ *  3. buildConstraintAwarePlan × 4 variants:
+ *       filterByBlockedSlots  — O(m · b) ≈ O(m)
+ *       checkTimeConflict     — O(m²)  ← dominates
+ *       generateVirtualTimes  — O(m · 36)
+ *  4. dedupeCourses + score   — O(m)
+ *
+ * Worst-case overall: O(n + m²)
+ *
+ * @param n  number of uploaded images / PDF pages
+ * @param m  estimated course pool size (default 42 for KSU SOT 2학년)
+ * @param b  blocked time slots from vision (default 0)
+ */
+export function computePipelineComplexity(
+  n: number,
+  m = 42,
+  b = 0,
+): PipelineComplexity {
+  const safeN = Math.max(1, n);
+  const safeM = Math.max(1, m);
+
+  // ── Operation estimates ──────────────────────────────────────────────────
+  const visionOps   = safeN * 800;                          // OCR token budget/image
+  const dedupeOps   = Math.round(safeM * Math.log2(safeM)); // O(m log m)
+  const filterOps   = safeM * Math.max(b, 1);               // O(m·b)
+  const conflictOps = 4 * safeM * safeM;                    // O(4·m²) — 4 variants
+  const scoreOps    = safeM;
+
+  const worstCaseOps = visionOps + dedupeOps + filterOps + conflictOps + scoreOps;
+
+  // ── Wall-clock estimation ────────────────────────────────────────────────
+  // Vision: Groq API network-bound, ~3.5s per batch of 5
+  const visionBatches = Math.ceil(safeN / 5);
+  const visionSec     = visionBatches * 3.5;
+  // LLM plan generation: baseline 8s (Groq 70B)
+  const llmBaseSec    = 8;
+  // Local compute: planner runs at ~2×10^7 ops/s on serverless
+  const localSec      = (dedupeOps + filterOps + conflictOps + scoreOps) / 2e7;
+  const estSeconds    = Math.round((visionSec + llmBaseSec + localSec) * 10) / 10;
+
+  return {
+    formula:      "O(n + m²)",
+    n:            safeN,
+    m:            safeM,
+    worstCaseOps: Math.round(worstCaseOps),
+    estSeconds,
+    breakdown: [
+      `Vision OCR  : O(n)    — ${safeN}장 / ${visionBatches}배치 × ~3.5s`,
+      `Dedup+Sort  : O(m·log m) — m=${safeM} → ${dedupeOps}ops`,
+      `Conflict    : O(m²)   — ${safeM}² × 4variants = ${conflictOps}ops`,
+      `LLM Generate: baseline — ~${llmBaseSec}s (Groq)`,
+    ],
+  };
+}
+
+// ─── Course Deduplication ─────────────────────────────────────────────────────
+
+/**
+ * 과목 목록에서 중복을 완전히 제거한다.
+ * - code가 있는 과목: code 기준 (대소문자 무시)
+ * - code가 없는 과목: name 기준 (공백·대소문자 정규화)
+ * 앞에 나오는 과목을 우선 유지하고 이후 중복을 제거한다.
+ */
+export function dedupeCourses(courses: Course[]): Course[] {
+  const seenCodes = new Set<string>();
+  const seenNames = new Set<string>();
+  return courses.filter((c) => {
+    const code = (c.code ?? "").trim().toLowerCase();
+    const name = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, "");
+    if (code) {
+      if (seenCodes.has(code)) return false;
+      seenCodes.add(code);
+    }
+    if (name) {
+      if (seenNames.has(name)) return false;
+      seenNames.add(name);
+    }
+    return true;
+  });
+}
+
 // ─── Required-Course Prioritization ──────────────────────────────────────────
 
 /**
@@ -441,11 +637,14 @@ export function generateFourScenarios(
   rules: CourseRule[] = [],
   retakeCodes: string[] = [],
 ): Array<StudyPlan & { score: number; conflicts: TimeConflict[] }> {
+  // coursePool 자체의 중복을 제거한 뒤 시나리오 생성 (입력 오염 방어)
+  const deduped = dedupeCourses(coursePool);
+
   return SCENARIO_PRESETS.map((cfg) => {
     // 1. Apply rules priority + lock retakes at top
-    const ordered = lockRetakesFirst(prioritizeRequired(coursePool, rules), retakeCodes);
+    const ordered = lockRetakesFirst(prioritizeRequired(deduped, rules), retakeCodes);
 
-    // 2. Trim greedily to targetCredits
+    // 2. Trim greedily to targetCredits (strict: used + cr <= target)
     let used = 0;
     const picked = ordered.filter((c) => {
       const cr = c.credits ?? 3;
@@ -456,15 +655,19 @@ export function generateFourScenarios(
     // 3. Inject virtual times for courses missing schedule data
     const withTimes = generateVirtualTimes(picked, cfg.preferOffDay);
 
-    // 4. Annotate
-    const conflicts = checkTimeConflict(withTimes);
-    const score     = scorePlan(withTimes, cfg.preferOffDay);
+    // 4. Final dedup guard — generateVirtualTimes 이후에도 중복 원천 차단
+    const finalCourses = dedupeCourses(withTimes);
+    const finalCredits = calculateTotalCredits(finalCourses);
+
+    // 5. Annotate
+    const conflicts = checkTimeConflict(finalCourses);
+    const score     = scorePlan(finalCourses, cfg.preferOffDay);
 
     return {
       label:        cfg.label,
       strategy:     cfg.strategy,
-      courses:      withTimes,
-      totalCredits: used,
+      courses:      finalCourses,
+      totalCredits: finalCredits,
       score,
       conflicts,
     };
@@ -548,19 +751,40 @@ export interface BlockedTimeSlot {
 }
 
 /**
+ * Vision API 응답에서 endTime 필드를 포함한 확장 과목 타입.
+ * 90분 고정 가정 대신 실제 종료 시각을 사용할 수 있다.
+ */
+type EnrolledCourseWithEnd = Course & { endTime?: string | null };
+
+/**
+ * minutes-since-midnight → "HH:MM" 문자열 변환 유틸.
+ * [Time-Shield-Scan] 로그 및 UI 표시에 사용.
+ */
+export function minutesToHHMM(mins: number): string {
+  const h = Math.floor(mins / 60).toString().padStart(2, "0");
+  const m = (mins % 60).toString().padStart(2, "0");
+  return `${h}:${m}`;
+}
+
+/**
  * buildBlockedTimeSlots
  * 이미 수강 중인 과목 목록(vision API 결과) → BlockedTimeSlot[] 변환.
  * 각 과목의 요일·시간을 개별 슬롯으로 분리한다.
  * (예: "월수 09:00" → 월 09:00-10:30, 수 09:00-10:30 두 슬롯)
+ *
+ * endTime 필드가 있으면 고정 90분 대신 실제 종료 시각을 사용 (1분 오차 없음).
  */
-export function buildBlockedTimeSlots(enrolledCourses: Course[]): BlockedTimeSlot[] {
+export function buildBlockedTimeSlots(enrolledCourses: EnrolledCourseWithEnd[]): BlockedTimeSlot[] {
   const slots: BlockedTimeSlot[] = [];
   for (const course of enrolledCourses) {
     if (!course.day || !course.time) continue;
     const days  = (course.day.match(/[월화수목금]/g) ?? []);
     const start = toMinutes(course.time);
     if (start === null) continue;
-    const end = start + PERIOD_MINS;
+    // endTime이 있으면 실제 종료 시각 사용, 없으면 90분(1교시) 기본값
+    const end = course.endTime
+      ? (toMinutes(course.endTime) ?? start + PERIOD_MINS)
+      : start + PERIOD_MINS;
     for (const day of days) {
       slots.push({ day, startMin: start, endMin: end, source: "current_course", courseName: course.name });
     }
@@ -672,7 +896,7 @@ export interface ConstraintPlanInput {
  *
  * 각 단계에서 filterByBlockedSlots 적용 → 충돌 없는 과목만 선택.
  */
-export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
+export function buildConstraintAwarePlan(input: ConstraintPlanInput): { courses: Course[]; riskAnalysis: string[] } {
   const {
     year, semester, targetCredits, blockedSlots,
     preferOffDay, variant = "stable", extraCourses = [],
@@ -706,8 +930,22 @@ export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
       : rawElect;                                  // stable/major: 기본 순서
 
   // ── 충돌 필터 적용 ──────────────────────────────────────────────────────
-  const availCore   = filterByBlockedSlots(rawCore,      allBlocked, preferOffDay);
+  let availCore   = filterByBlockedSlots(rawCore,      allBlocked, preferOffDay);
   const availElect  = filterByBlockedSlots(orderedElect, allBlocked, preferOffDay);
+
+  // ── Must-Have 우선 정렬 (Plan A / stable, 2학년) ──────────────────────
+  // 전산수학 · 리눅스시스템 · 자료구조 를 최상단으로 끌어올림
+  const mustHavesMissingDueToConflict: string[] = [];
+  if (variant === "stable" && year === 2) {
+    availCore = sortMustHaveFirst(availCore);
+    // Track must-haves present in rawCore but blocked by timetable conflict
+    for (const name of MUST_HAVE_YEAR2_SEM1_NAMES) {
+      const nameTrimmed = name.replace(/\s+/g, "");
+      const inRaw   = rawCore.some((c) => (c.name ?? "").replace(/\s+/g, "").includes(nameTrimmed));
+      const inAvail = availCore.some((c) => (c.name ?? "").replace(/\s+/g, "").includes(nameTrimmed));
+      if (inRaw && !inAvail) mustHavesMissingDueToConflict.push(name);
+    }
+  }
   const availExtra  = filterByBlockedSlots(extraCourses, allBlocked, preferOffDay);
   const availHum    = filterByBlockedSlots(FUSION_HUM,   allBlocked, preferOffDay);
   const availArt    = filterByBlockedSlots(FUSION_ART,   allBlocked, preferOffDay);
@@ -715,18 +953,34 @@ export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
   const plan: Course[] = [];
   let credits = 0;
 
+  // ── 중복 키 추적 세트 (add() 내부에서 O(1) 조회) ─────────────────────────
+  const usedCodes = new Set<string>();
+  const usedNames = new Set<string>();
+
   // ── 과목 추가 헬퍼 ───────────────────────────────────────────────────────
   const add = (c: Course): boolean => {
     const cr = c.credits ?? 3;
+
+    // ① 학점 초과 엄격 차단 — 1학점도 초과 불가
     if (credits + cr > targetCredits) return false;
-    if (plan.some((p) => p.code === c.code || p.name === c.name)) return false;
-    // 내부 시간 충돌 검사 — 충돌 시 day/time 제거 후 가상 배정 대상으로 추가
+
+    // ② 중복 검사: null/undefined code 오탐 방지를 위해 비어있지 않을 때만 비교
+    const cCode = (c.code ?? "").trim().toLowerCase();
+    const cName = (c.name ?? "").trim().toLowerCase().replace(/\s+/g, "");
+    if (cCode && usedCodes.has(cCode)) return false;
+    if (cName && usedNames.has(cName)) return false;
+
+    // ③ 내부 시간 충돌 검사 — 충돌 시 day/time 제거 후 가상 배정 대상으로 재시도
     const inner = checkTimeConflict([...plan, c]);
     if (inner.length > 0 && c.day && c.time) {
       return add({ ...c, day: undefined, time: undefined });
     }
+
+    // ④ 확정 추가
     plan.push(c);
     credits += cr;
+    if (cCode) usedCodes.add(cCode);
+    if (cName) usedNames.add(cName);
     return true;
   };
 
@@ -763,13 +1017,32 @@ export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
     }
   }
 
+  // ── 최종 Clean List: dedup + 학점 상한 이중 방어 ─────────────────────────
+  const cleanPlan = dedupeCourses(plan).reduce<{ courses: Course[]; total: number }>(
+    (acc, c) => {
+      const cr = c.credits ?? 3;
+      if (acc.total + cr > targetCredits) return acc; // 초과 과목 제거
+      acc.courses.push(c);
+      acc.total += cr;
+      return acc;
+    },
+    { courses: [], total: 0 },
+  );
+
+  const riskAnalysis = computePlanRisks(
+    cleanPlan.courses as (Course & { _virtual?: boolean })[],
+    preferOffDay,
+    mustHavesMissingDueToConflict,
+  );
+
   console.info(
     `[buildConstraintAwarePlan] year=${year} variant=${variant} ` +
     `blocked=${blockedSlots.length}슬롯 offDay=${preferOffDay ?? "없음"} ` +
-    `→ ${plan.length}과목 ${credits}학점 (목표:${targetCredits})`,
+    `→ ${cleanPlan.courses.length}과목 ${cleanPlan.total}학점 (목표:${targetCredits})` +
+    (riskAnalysis.length ? ` | risks: ${riskAnalysis.join("; ")}` : ""),
   );
 
-  return plan;
+  return { courses: cleanPlan.courses, riskAnalysis };
 }
 
 /**
@@ -779,7 +1052,7 @@ export function buildConstraintAwarePlan(input: ConstraintPlanInput): Course[] {
  */
 export function buildFourConstraintPlans(
   baseInput: Omit<ConstraintPlanInput, "variant">,
-): Record<"planA" | "planB" | "planC" | "planD", Course[]> {
+): Record<"planA" | "planB" | "planC" | "planD", { courses: Course[]; riskAnalysis: string[] }> {
   return {
     planA: buildConstraintAwarePlan({ ...baseInput, variant: "stable" }),
     planB: buildConstraintAwarePlan({ ...baseInput, variant: "challenge" }),

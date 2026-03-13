@@ -10,10 +10,10 @@ interface Props {
 }
 
 const PLAN_META = [
-  { label: "Plan A", accent: "#3b82f6", glow: "rgba(59,130,246,0.15)"  },
-  { label: "Plan B", accent: "#10b981", glow: "rgba(16,185,129,0.15)"  },
-  { label: "Plan C", accent: "#a855f7", glow: "rgba(168,85,247,0.15)"  },
-  { label: "Plan D", accent: "#f97316", glow: "rgba(249,115,22,0.15)"  },
+  { label: "Plan A", badge: "안정형",   accent: "#3b82f6", glow: "rgba(59,130,246,0.15)"  },
+  { label: "Plan B", badge: "전공몰입", accent: "#10b981", glow: "rgba(16,185,129,0.15)"  },
+  { label: "Plan C", badge: "공강수호", accent: "#a855f7", glow: "rgba(168,85,247,0.15)"  },
+  { label: "Plan D", badge: "도전형",   accent: "#f97316", glow: "rgba(249,115,22,0.15)"  },
 ];
 
 function reqBadge(req: string): string {
@@ -72,10 +72,15 @@ export default function PlanCard({ plan, index }: Props) {
 
         {/* Header */}
         <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span className="text-[11px] font-mono font-bold px-2.5 py-1 rounded-full"
               style={{ background: `${meta.accent}12`, color: meta.accent, border: `1px solid ${meta.accent}30` }}>
               {label}
+            </span>
+            {/* Concept badge */}
+            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full"
+              style={{ background: `${meta.accent}18`, color: meta.accent, border: `1px solid ${meta.accent}40` }}>
+              [{meta.badge}]
             </span>
             {plan.totalCredits !== undefined && (
               <span className="text-[11px] text-slate-400 font-mono">{plan.totalCredits}학점</span>
@@ -89,6 +94,21 @@ export default function PlanCard({ plan, index }: Props) {
             style={{ borderLeft: `2px solid ${meta.accent}50` }}>
             {plan.strategy}
           </p>
+        )}
+
+        {/* Dynamic Risk Analysis */}
+        {(plan.riskAnalysis ?? []).length > 0 && (
+          <div className="mb-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200/60">
+            <p className="text-[10px] font-bold text-amber-600 uppercase tracking-wider mb-1">⚠ 리스크 분석</p>
+            <ul className="space-y-0.5">
+              {(plan.riskAnalysis ?? []).map((item, i) => (
+                <li key={i} className="text-[11px] text-amber-700 flex items-start gap-1">
+                  <span className="shrink-0 mt-px">•</span>
+                  <span>{item}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
         )}
 
         {/* Course list */}

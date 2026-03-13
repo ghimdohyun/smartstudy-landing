@@ -74,6 +74,8 @@ export interface StudyPlan {
   courses?: Course[];
   totalCredits?: number;
   note?: string;
+  /** Dynamic risk items from the planner engine (e.g. "금공강 실패", "연강 3쌍") */
+  riskAnalysis?: string[];
 }
 
 export interface SemesterPlan {

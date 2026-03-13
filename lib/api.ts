@@ -74,6 +74,7 @@ interface RawPlan {
   strategy?: string;
   totalCredits?: number;
   courses?: Array<string | RawCourse>;
+  riskAnalysis?: string[];
 }
 
 function normalizePlan(raw: RawPlan | undefined, label: string): StudyPlan | null {
@@ -96,6 +97,7 @@ function normalizePlan(raw: RawPlan | undefined, label: string): StudyPlan | nul
     strategy: raw.strategy ?? raw.title,
     courses,
     totalCredits: raw.totalCredits,
+    riskAnalysis: Array.isArray(raw.riskAnalysis) ? raw.riskAnalysis : undefined,
   };
 }
 
