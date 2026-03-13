@@ -20,9 +20,6 @@ export const StudyPlanRequestSchema = z.object({
     .optional()
     .default(""),
   universityId: z.string().optional(),
-  pdfMode: z.boolean().optional(),
-  /** Structured PDF knowledge — injected as "학교 공식 규정" in the prompt */
-  pdfKnowledge: z.string().max(20000).optional().default(""),
   imageUrl: z
     .string()
     .refine(

@@ -438,7 +438,6 @@ export default function StudyPlanForm({ onSubmit, loading, status, error }: Prop
       imageUrl,
       mode,
       universityId,
-      pdfMode: pdfLoaded,
     });
 
   const textareaClass = cn(

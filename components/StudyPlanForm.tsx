@@ -1,72 +1,9 @@
-// StudyPlanForm — clean white theme + pdf2json-based PDF engine + EO209 agent log
+// StudyPlanForm — clean white theme, image-based input only
 "use client";
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import type { StudyPlanInput } from "@/types";
 import { cn } from "@/lib/utils";
-
-// ─── Agent Progress Log (light emerald) ───────────────────────────────────────
-
-const PDF_STEPS = [
-  { text: "PDF 파일 분석 중...",               highlight: false },
-  { text: "텍스트 레이어 추출 중...",           highlight: false },
-  { text: "편람 청크 분할 및 인덱싱 중...",     highlight: false },
-  { text: "교육과정 커리큘럼 탐색 중...",       highlight: false },
-  { text: "전공필수 이수 조건 확인 중...",       highlight: true  },
-  { text: "AI 컨텍스트 구성 완료",              highlight: false },
-];
-
-const STEP_INTERVAL_MS = 1100;
-
-interface AgentLogProps { active: boolean; done: boolean }
-
-function AgentProgressLog({ active, done }: AgentLogProps) {
-  const [currentStep, setCurrentStep] = useState(0);
-
-  useEffect(() => {
-    if (!active) { setCurrentStep(0); return; }
-    const id = setInterval(() => setCurrentStep((s) => s < PDF_STEPS.length - 1 ? s + 1 : s), STEP_INTERVAL_MS);
-    return () => clearInterval(id);
-  }, [active]);
-
-  useEffect(() => { if (done) setCurrentStep(PDF_STEPS.length - 1); }, [done]);
-
-  if (!active && !done) return null;
-
-  return (
-    <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12px]">
-      {PDF_STEPS.map(({ text, highlight }, i) => {
-        const isCompleted = done || i < currentStep;
-        const isCurrent   = !done && i === currentStep;
-        const isPending   = !done && i > currentStep;
-        return (
-          <div key={i} className={cn(
-            "flex items-center gap-2.5 py-[3px] transition-opacity duration-300",
-            isPending && "opacity-35"
-          )}>
-            <span className={cn("w-3.5 text-center shrink-0 font-semibold",
-              isCompleted ? "text-emerald-600"
-                : isCurrent  ? "text-emerald-700 animate-pulse"
-                : "text-emerald-300"
-            )}>
-              {isCompleted ? "✓" : isCurrent ? "●" : "○"}
-            </span>
-            <span className={cn(
-              "font-sans",
-              isCompleted ? "text-emerald-700"
-                : isCurrent  ? cn("text-emerald-900 font-semibold", highlight && "underline decoration-emerald-400 decoration-dotted")
-                : "text-emerald-400",
-              // EO209 step always slightly bolder when active/done
-              highlight && !isPending && "font-semibold"
-            )}>
-              {text}
-            </span>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
 
 // ─── Image Drop Zone ───────────────────────────────────────────────────────────
 
@@ -157,268 +94,6 @@ function ImageDropZone({ value, onChange }: ImageDropZoneProps) {
   );
 }
 
-// ─── PDF Drop Zone (client-side pdfjs extraction — no binary upload, no 413) ───
-//
-// Architecture: pdfjs-dist runs IN THE BROWSER.
-//   1. Extract text page-by-page (shows progress)
-//   2. Filter only curriculum-relevant pages (keyword match)
-//   3. POST only the tiny filtered text to /api/v1?type=pdf
-//   → Server receives ~KB of text instead of MB of binary → 413 impossible
-
-const CURRICULUM_KEYWORDS = [
-  "소프트웨어학과", "교육과정", "전공필수", "전공선택", "전공기초",
-  "교양필수", "교양선택", "학점이수", "졸업학점", "이수구분",
-  "공통필수", " EO2", "학수번호", "이수학점", "소프트웨어",
-];
-
-/**
- * 경성대 교육과정 편람 고정 페이지 맵 (Hard-Coded Knowledge)
- * 이 범위 안의 페이지는 키워드 없어도 항상 포함 — 범위 밖은 노이즈
- *
- * [졸업 요건]      2페이지
- * [학년별 로드맵]  4~10페이지
- * [교과목 세부]    65~135페이지 (소프트웨어학과 102페이지 우선)
- * [특수 요건]      46~61페이지(교직) / 155~158페이지(자격증)
- */
-const KSU_TARGET_PAGE_RANGES: [number, number][] = [
-  [2,   2],
-  [4,  10],
-  [46,  61],
-  [65, 135],
-  [155, 158],
-];
-
-function isKsuTargetPage(pageNum: number): boolean {
-  return KSU_TARGET_PAGE_RANGES.some(([s, e]) => pageNum >= s && pageNum <= e);
-}
-
-interface PageEntry { pageNum: number; text: string }
-
-interface PdfExtractResult {
-  totalPages: number;
-  chunkCount: number;
-  courseCount: number;
-  curriculumText: string;
-  validation: Record<string, { found: boolean; pageRange?: string }>;
-  /** Structured knowledge JSON string from Groq refinement — stored as internalPdfKnowledge */
-  pdfKnowledge?: string | null;
-}
-
-interface PdfDropZoneProps { universityId?: string; onExtracted: (r: PdfExtractResult) => void }
-
-type Phase = "idle" | "extracting" | "sending" | "done" | "error";
-
-function PdfDropZone({ universityId, onExtracted }: PdfDropZoneProps) {
-  const [dragging,  setDragging]  = useState(false);
-  const [phase,     setPhase]     = useState<Phase>("idle");
-  const [progress,  setProgress]  = useState<{ cur: number; total: number } | null>(null);
-  const [result,    setResult]    = useState<PdfExtractResult | null>(null);
-  const [error,     setError]     = useState<string | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
-
-  /**
-   * Aggressive sanitizer — whitelist-only approach.
-   * Keeps: printable ASCII (\x20-\x7E), Korean syllables (가-힣), Hangul Jamo, whitespace.
-   * Deletes everything else (surrogates, PUA, CJK Unified, special Unicode, garbled bytes).
-   * This is the nuclear option that prevents ANY non-standard char from reaching JSON.stringify.
-   */
-  const sanitizeText = (raw: string): string => {
-    return raw
-      // Whitelist: ASCII printable + Korean (syllables + Jamo + Compatibility Jamo) + whitespace
-      // eslint-disable-next-line no-control-regex
-      .replace(/[^\x20-\x7E\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s]/g, "")
-      .replace(/\s{2,}/g, " ")
-      .trim();
-  };
-
-  /** Extract text client-side with pdfjs-dist, filter to curriculum pages only */
-  const extractClientSide = async (
-    file: File,
-    onProgress: (cur: number, total: number) => void,
-  ): Promise<{ pageTexts: PageEntry[]; totalPages: number }> => {
-    // Dynamic import: keeps pdfjs out of SSR bundle
-    const pdfjs = await import("pdfjs-dist");
-    // Worker served from unpkg CDN — no webpack config needed, always version-matched
-    pdfjs.GlobalWorkerOptions.workerSrc =
-      `https://unpkg.com/pdfjs-dist@${pdfjs.version}/build/pdf.worker.min.mjs`;
-
-    const arrayBuffer = await file.arrayBuffer();
-    const pdf = await pdfjs.getDocument({ data: new Uint8Array(arrayBuffer) }).promise;
-    const totalPages = pdf.numPages;
-    const pageTexts: PageEntry[] = [];
-
-    for (let p = 1; p <= totalPages; p++) {
-      onProgress(p, totalPages);
-      const page    = await pdf.getPage(p);
-      const content = await page.getTextContent();
-      const rawText = (content.items as Array<{ str?: string }>)
-        .map((it) => it.str ?? "")
-        .join(" ")
-        .replace(/\s{2,}/g, " ")
-        .trim();
-      // Sanitize: strip surrogates, PUA chars, control chars that break JSON
-      const text = sanitizeText(rawText);
-      // Include strategy (priority order):
-      //   1. Page falls inside KSU hard-coded target ranges → always include
-      //   2. Page contains curriculum keywords → include (non-KSU / fallback)
-      //   3. Otherwise → noise, skip
-      const inTargetRange   = isKsuTargetPage(p);
-      const hasKeyword      = CURRICULUM_KEYWORDS.some((kw) => text.includes(kw));
-      if (text.length > 30 && (inTargetRange || hasKeyword)) {
-        pageTexts.push({ pageNum: p, text });
-      }
-    }
-    return { pageTexts, totalPages };
-  };
-
-  const handleFile = useCallback(async (file: File) => {
-    if (!file.name.toLowerCase().endsWith(".pdf") && file.type !== "application/pdf") {
-      setError("PDF 파일만 업로드할 수 있습니다."); return;
-    }
-    setPhase("extracting"); setProgress(null); setError(null); setResult(null);
-    try {
-      // ── Phase 1: browser extracts text (no upload, no 413) ───────────────
-      const { pageTexts, totalPages } = await extractClientSide(
-        file,
-        (cur, total) => setProgress({ cur, total }),
-      );
-
-      if (pageTexts.length === 0) {
-        throw new Error(
-          "커리큘럼 관련 페이지를 찾을 수 없습니다. " +
-          "스캔 이미지 PDF이거나 텍스트 레이어가 없는 파일일 수 있습니다.",
-        );
-      }
-
-      // ── Phase 2: send only the filtered text (KB-sized) to server ────────
-      setPhase("sending");
-      // Guard: verify JSON serialization before sending (catches any remaining bad chars)
-      let requestBody: string;
-      try {
-        requestBody = JSON.stringify({ pageTexts, totalPages, universityId });
-      } catch {
-        throw new Error(
-          "파일 내 특수문자가 너무 많습니다. 텍스트로 복사해서 입력해주세요.",
-        );
-      }
-      const res = await fetch("/api/v1?type=pdf", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: requestBody,
-      });
-      if (!res.ok) {
-        const e = await res.json().catch(() => ({})) as { error?: string };
-        throw new Error(e.error ?? `서버 오류 ${res.status}`);
-      }
-      const data = await res.json() as PdfExtractResult;
-      setResult(data); onExtracted(data);
-      setPhase("done");
-    } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "PDF 분석 실패");
-      setPhase("error");
-    }
-  }, [universityId, onExtracted]);
-
-  // ── Success card ──────────────────────────────────────────────────────────
-  if (phase === "done" && result) {
-    const eo203 = result.validation?.["EO203"];
-    const eo209 = result.validation?.["EO209"];
-    return (
-      <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4">
-        <div className="flex items-center gap-2 mb-2">
-          <span className="w-2 h-2 rounded-full bg-emerald-500 shrink-0" />
-          <p className="text-[13px] font-semibold text-emerald-800">
-            분석 완료 · 전체 {result.totalPages}페이지 중 커리큘럼 {result.chunkCount}청크 · 과목 {result.courseCount}개
-          </p>
-        </div>
-        <div className="flex flex-wrap gap-1.5 mb-2">
-          {[["EO203", eo203], ["EO209", eo209]].map(([code, v]) => {
-            const val = v as { found: boolean; pageRange?: string } | undefined;
-            return val ? (
-              <span key={code as string} className={cn(
-                "text-[11px] font-semibold px-2.5 py-0.5 rounded-full border font-mono",
-                val.found
-                  ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                  : "bg-red-50 text-red-600 border-red-200",
-              )}>
-                {code as string} {val.found ? `✓ ${val.pageRange ?? ""}` : "✗ 미발견"}
-              </span>
-            ) : null;
-          })}
-        </div>
-        <button type="button"
-          onClick={() => { setResult(null); setPhase("idle"); setError(null); setProgress(null); }}
-          className="text-[11px] text-gray-400 hover:text-gray-600 transition-colors">
-          다른 PDF 업로드
-        </button>
-      </div>
-    );
-  }
-
-  // ── Extraction / sending progress ─────────────────────────────────────────
-  if (phase === "extracting" || phase === "sending") {
-    const pct = progress ? Math.round((progress.cur / progress.total) * 100) : 0;
-    return (
-      <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4 space-y-2.5">
-        <div className="flex items-center gap-2">
-          <div className="w-3.5 h-3.5 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin shrink-0" />
-          <p className="text-[13px] font-semibold text-indigo-800">
-            {phase === "extracting"
-              ? progress
-                ? `브라우저에서 직접 텍스트를 추출 중입니다... (${progress.cur} / ${progress.total}페이지)`
-                : "PDF를 여는 중..."
-              : "핵심 커리큘럼 페이지를 서버로 전송 중..."}
-          </p>
-        </div>
-        {phase === "extracting" && progress && (
-          <>
-            <div className="w-full h-1.5 rounded-full bg-indigo-100 overflow-hidden">
-              <div
-                className="h-full rounded-full bg-indigo-500 transition-all duration-300"
-                style={{ width: `${pct}%` }}
-              />
-            </div>
-            <p className="text-[11px] text-indigo-500">
-              파일이 서버로 업로드되지 않습니다 — 브라우저에서 직접 처리 중
-            </p>
-          </>
-        )}
-      </div>
-    );
-  }
-
-  // ── Drop zone (idle / error) ──────────────────────────────────────────────
-  return (
-    <div>
-      <div role="button" tabIndex={0}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => { e.preventDefault(); setDragging(false); const f = e.dataTransfer.files[0]; if (f) handleFile(f); }}
-        onClick={() => fileRef.current?.click()}
-        onKeyDown={(e) => e.key === "Enter" && fileRef.current?.click()}
-        className={cn(
-          "flex flex-col items-center justify-center min-h-[100px] rounded-xl border-2 border-dashed",
-          "cursor-pointer transition-all duration-200 select-none text-center px-3 py-4",
-          dragging
-            ? "border-indigo-400 bg-indigo-50"
-            : "border-gray-200 hover:border-indigo-300 hover:bg-indigo-50/30 bg-gray-50/60",
-        )}>
-        <span className="text-2xl mb-1">📄</span>
-        <p className="text-[13px] text-gray-600 font-medium">
-          {dragging ? "PDF를 여기에 놓으세요" : "편람 PDF 드래그 또는 클릭"}
-        </p>
-        <p className="text-[11px] text-gray-400 mt-0.5">PDF · 용량 무제한 · 브라우저 직접 추출 (서버 전송 없음)</p>
-        <input ref={fileRef} type="file" accept="application/pdf,.pdf" className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }} />
-      </div>
-
-      {error && (
-        <p className="mt-2 text-[12px] text-red-500 font-medium">{error}</p>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Form ─────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -430,19 +105,10 @@ interface Props {
 }
 
 export default function StudyPlanForm({ onSubmit, loading, status, error, onFormChange }: Props) {
-  const [mode,                 setMode]                 = useState<"plans" | "year">("plans");
-  const [step,                 setStep]                 = useState<1 | 2>(1);
-  const [studentInfo,          setStudentInfo]          = useState("");
-  const [timetableInfo,        setTimetableInfo]        = useState("");
-  const [imageUrl,             setImageUrl]             = useState("");
-  const [pdfMode,              setPdfMode]              = useState(false);
-  /** Hidden state: structured PDF knowledge — NOT shown in any textarea */
-  const [internalPdfKnowledge, setInternalPdfKnowledge] = useState<string>("");
-  /** Summary of PDF for step-indicator display only */
-  const [pdfSummary,           setPdfSummary]           = useState<{
-    totalPages: number; courseCount: number;
-    validation: Record<string, { found: boolean }>;
-  } | null>(null);
+  const [mode,          setMode]          = useState<"plans" | "year">("plans");
+  const [studentInfo,   setStudentInfo]   = useState("");
+  const [timetableInfo, setTimetableInfo] = useState("");
+  const [imageUrl,      setImageUrl]      = useState("");
 
   const universityId =
     typeof window !== "undefined"
@@ -454,28 +120,8 @@ export default function StudyPlanForm({ onSubmit, loading, status, error, onForm
     onFormChange?.(studentInfo, timetableInfo, !!imageUrl);
   }, [studentInfo, timetableInfo, imageUrl, onFormChange]);
 
-  const handlePdfExtracted = useCallback((r: PdfExtractResult) => {
-    // Store structured knowledge silently — do NOT expose in timetableInfo textarea
-    if (r.pdfKnowledge) {
-      setInternalPdfKnowledge(r.pdfKnowledge);
-      console.info(`[StudyPlanForm] internalPdfKnowledge staged — ${r.pdfKnowledge.length} chars`);
-    } else {
-      // Fallback: if Groq refinement failed, use raw curriculumText
-      setInternalPdfKnowledge(r.curriculumText);
-      console.info(`[StudyPlanForm] internalPdfKnowledge (raw fallback) staged — ${r.curriculumText.length} chars`);
-    }
-    setPdfSummary({ totalPages: r.totalPages, courseCount: r.courseCount, validation: r.validation });
-    setPdfMode(true);
-    // Auto-advance to step 2
-    setTimeout(() => setStep(2), 600);
-  }, []);
-
-  const handleSkipPdf = () => {
-    setStep(2);
-  };
-
   const handleSubmit = () =>
-    onSubmit({ studentInfo, timetableInfo, imageUrl, mode, universityId, pdfMode, pdfKnowledge: internalPdfKnowledge || undefined });
+    onSubmit({ studentInfo, timetableInfo, imageUrl, mode, universityId });
 
   const textareaClass = cn(
     "w-full px-3.5 py-3 text-[14px] rounded-xl resize-vertical",
@@ -504,168 +150,71 @@ export default function StudyPlanForm({ onSubmit, loading, status, error, onForm
         ))}
       </div>
 
-      {/* Step indicator */}
-      <div className="flex items-center gap-2 mb-4 px-1">
-        {/* Step 1 bubble */}
-        <div className={cn(
-          "flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-bold shrink-0 transition-all",
-          step === 1
-            ? "bg-indigo-500 text-white shadow-[0_2px_8px_rgba(99,102,241,0.4)]"
-            : pdfMode
-              ? "bg-emerald-500 text-white"
-              : "bg-gray-200 text-gray-500"
-        )}>
-          {pdfMode && step === 2 ? "✓" : "1"}
+      {/* Form panel */}
+      <div className="bg-white rounded-2xl border border-gray-200 shadow-[0_4px_24px_rgba(15,23,42,0.07)] p-6 space-y-5">
+
+        {/* Student info — WEIGHT=MAX */}
+        <div>
+          <label className={labelClass}>
+            학생 정보
+            <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
+              ★ 최우선 가이드라인
+            </span>
+          </label>
+          <textarea rows={4} value={studentInfo} onChange={(e) => setStudentInfo(e.target.value)}
+            placeholder={"- 학교 / 학과 / 학년 (예: 경성대 소프트웨어학과 2학년)\n- 이번 학기 목표 학점\n- 진로 · 관심 분야\n→ 이미지보다 이 내용이 최우선 반영됩니다"}
+            className={cn(textareaClass, "border-amber-200 focus:border-amber-400 focus:ring-amber-400/25")}
+          />
         </div>
-        <span className={cn("text-[12px] font-semibold shrink-0",
-          step === 1 ? "text-indigo-600" : pdfMode ? "text-emerald-600" : "text-gray-400"
-        )}>
-          PDF 편람 업로드
-        </span>
-        <div className={cn("flex-1 h-px transition-colors", pdfMode ? "bg-emerald-300" : "bg-gray-200")} />
-        {/* Step 2 bubble */}
-        <div className={cn(
-          "flex items-center justify-center w-7 h-7 rounded-full text-[12px] font-bold shrink-0 transition-all",
-          step === 2
-            ? "bg-emerald-500 text-white shadow-[0_2px_8px_rgba(16,185,129,0.4)]"
-            : "bg-gray-200 text-gray-400"
-        )}>2</div>
-        <span className={cn("text-[12px] font-semibold shrink-0",
-          step === 2 ? "text-emerald-600" : "text-gray-400"
-        )}>
-          정보 입력 &amp; 생성
-        </span>
+
+        {/* Timetable info */}
+        <div>
+          <label className={labelClass}>
+            수강 조건 / 희망 시간표
+            <span className="ml-1.5 text-[11px] font-normal text-gray-400">(선택)</span>
+          </label>
+          <textarea rows={3} value={timetableInfo}
+            onChange={(e) => setTimetableInfo(e.target.value)}
+            placeholder={"- 꼭 듣고 싶은 / 피하고 싶은 과목\n- 희망 공강일\n- 기타 특이사항"}
+            className={textareaClass}
+          />
+        </div>
+
+        {/* Image upload */}
+        <div>
+          <p className="text-[13px] font-semibold text-slate-700 mb-1.5">
+            시간표 이미지 <span className="text-[11px] font-normal text-gray-400">(선택 · 에브리타임 캡처 등)</span>
+          </p>
+          <ImageDropZone value={imageUrl} onChange={setImageUrl} />
+        </div>
+
+        {/* Submit */}
+        <button type="button" onClick={handleSubmit} disabled={loading || !studentInfo.trim()}
+          className={cn(
+            "w-full py-3.5 rounded-xl text-[15px] font-bold transition-all",
+            loading || !studentInfo.trim()
+              ? "bg-gray-200 text-gray-400 cursor-not-allowed"
+              : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-[0_6px_18px_rgba(16,185,129,0.3)] hover:shadow-[0_8px_24px_rgba(16,185,129,0.4)]"
+          )}>
+          {loading ? "생성 중..." : "AI 결과 생성하기"}
+        </button>
+
+        {!studentInfo.trim() && (
+          <p className="text-[11px] text-amber-500 text-center">학생 정보를 입력해야 생성 가능합니다.</p>
+        )}
+
+        {(status || error) && (
+          <p className={cn("text-[12px] text-center", error ? "text-red-500 font-medium" : "text-gray-500")}>
+            {error ?? status}
+          </p>
+        )}
+
+        <p className="text-[11px] text-gray-400 text-center leading-relaxed">
+          {mode === "plans"
+            ? "Plan A~D · 전공필수 + 교양 균형 · 공강일 확보 · AI 최적화 수강 전략"
+            : "1학기/2학기 목표 · 주간 루틴 · 마일스톤 · 리스크 대응 포함"}
+        </p>
       </div>
-
-      {/* ─── STEP 1: PDF Upload ─── */}
-      {step === 1 && (
-        <div className="bg-white rounded-2xl border border-indigo-100 shadow-[0_4px_24px_rgba(99,102,241,0.08)] p-6 space-y-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-indigo-50 border border-indigo-200 flex items-center justify-center shrink-0">
-              <span className="text-indigo-500 text-sm">1</span>
-            </div>
-            <h2 className="text-[17px] font-bold text-slate-900 m-0">교육과정 편람 PDF 업로드</h2>
-          </div>
-          <p className="text-[13px] text-gray-500">
-            학교 편람 PDF를 업로드하면 AI가 전공 교육과정·졸업학점·이수 규정을 자동 정제하여
-            <span className="font-semibold text-indigo-600"> 학교 공식 규정</span>으로 분석에 적용합니다.
-          </p>
-
-          <PdfDropZone universityId={universityId} onExtracted={handlePdfExtracted} />
-
-          {/* Skip */}
-          <div className="flex items-center justify-between pt-1">
-            <p className="text-[11px] text-gray-400">PDF가 없어도 이미지나 텍스트로 분석 가능합니다.</p>
-            <button type="button" onClick={handleSkipPdf}
-              className="text-[12px] text-gray-400 hover:text-gray-600 font-medium transition-colors underline underline-offset-2">
-              PDF 없이 시작하기 →
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* ─── STEP 2: Info + Image + Submit ─── */}
-      {step === 2 && (
-        <div className="bg-white rounded-2xl border border-gray-200 shadow-[0_4px_24px_rgba(15,23,42,0.07)] p-6 space-y-5">
-
-          {/* Title */}
-          <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center shrink-0">
-              <span className="text-emerald-500 text-sm">2</span>
-            </div>
-            <h2 className="text-[17px] font-bold text-slate-900 m-0">
-              {mode === "plans" ? "시간표 & 정보 입력" : "학습 계획 정보 입력"}
-            </h2>
-            {/* PDF knowledge badge */}
-            {internalPdfKnowledge && (
-              <span className="ml-auto inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 border border-indigo-200 shrink-0">
-                📚 편람 규정 로드됨
-              </span>
-            )}
-          </div>
-
-          {/* PDF summary chip */}
-          {pdfSummary && (
-            <div className="flex flex-wrap gap-1.5 p-3 rounded-xl bg-indigo-50 border border-indigo-100">
-              <span className="text-[11px] text-indigo-700 font-semibold">📄 편람 분석 완료</span>
-              <span className="text-[11px] text-indigo-500">· {pdfSummary.totalPages}페이지</span>
-              <span className="text-[11px] text-indigo-500">· 과목 {pdfSummary.courseCount}개</span>
-              {Object.entries(pdfSummary.validation).map(([code, v]) => (
-                <span key={code} className={cn(
-                  "text-[10px] font-semibold px-1.5 py-0.5 rounded-full font-mono",
-                  v.found ? "bg-emerald-100 text-emerald-700" : "bg-red-50 text-red-600"
-                )}>{code} {v.found ? "✓" : "✗"}</span>
-              ))}
-              <button type="button" onClick={() => setStep(1)}
-                className="ml-auto text-[10px] text-indigo-400 hover:text-indigo-600 underline">PDF 재업로드</button>
-            </div>
-          )}
-
-          {/* Student info — WEIGHT=MAX */}
-          <div>
-            <label className={labelClass}>
-              학생 정보
-              <span className="ml-2 inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300">
-                ★ 최우선 가이드라인
-              </span>
-            </label>
-            <textarea rows={4} value={studentInfo} onChange={(e) => setStudentInfo(e.target.value)}
-              placeholder={"- 학교 / 학과 / 학년 (예: 경성대 소프트웨어학과 2학년)\n- 이번 학기 목표 학점\n- 진로 · 관심 분야\n→ 이미지·PDF보다 이 내용이 최우선 반영됩니다"}
-              className={cn(textareaClass, "border-amber-200 focus:border-amber-400 focus:ring-amber-400/25")}
-            />
-          </div>
-
-          {/* Timetable info — optional when PDF loaded */}
-          <div>
-            <label className={labelClass}>
-              수강 조건 / 희망 시간표
-              <span className="ml-1.5 text-[11px] font-normal text-gray-400">(선택)</span>
-            </label>
-            <textarea rows={3} value={timetableInfo}
-              onChange={(e) => setTimetableInfo(e.target.value)}
-              placeholder={"- 꼭 듣고 싶은 / 피하고 싶은 과목\n- 희망 공강일\n- 기타 특이사항"}
-              className={textareaClass}
-            />
-          </div>
-
-          {/* Image upload */}
-          <div>
-            <p className="text-[13px] font-semibold text-slate-700 mb-1.5">
-              시간표 이미지 <span className="text-[11px] font-normal text-gray-400">(선택 · 에브리타임 캡처 등)</span>
-            </p>
-            <ImageDropZone value={imageUrl} onChange={setImageUrl} />
-          </div>
-
-          {/* Submit */}
-          <button type="button" onClick={handleSubmit} disabled={loading || !studentInfo.trim()}
-            className={cn(
-              "w-full py-3.5 rounded-xl text-[15px] font-bold transition-all",
-              loading || !studentInfo.trim()
-                ? "bg-gray-200 text-gray-400 cursor-not-allowed"
-                : "bg-emerald-500 hover:bg-emerald-600 text-white shadow-[0_6px_18px_rgba(16,185,129,0.3)] hover:shadow-[0_8px_24px_rgba(16,185,129,0.4)]"
-            )}>
-            {loading ? "생성 중..." : internalPdfKnowledge ? "하이브리드 AI 분석 시작" : "AI 결과 생성하기"}
-          </button>
-
-          {!studentInfo.trim() && (
-            <p className="text-[11px] text-amber-500 text-center">학생 정보를 입력해야 생성 가능합니다.</p>
-          )}
-
-          {(status || error) && (
-            <p className={cn("text-[12px] text-center", error ? "text-red-500 font-medium" : "text-gray-500")}>
-              {error ?? status}
-            </p>
-          )}
-
-          <p className="text-[11px] text-gray-400 text-center leading-relaxed">
-            {internalPdfKnowledge
-              ? "편람 공식 규정 + 이미지 분석 + 개인 맞춤 필터 — 3단계 하이브리드 AI"
-              : mode === "plans"
-                ? "Plan A~D · 전공필수 + 교양 균형 · 공강일 확보 · AI 최적화 수강 전략"
-                : "1학기/2학기 목표 · 주간 루틴 · 마일스톤 · 리스크 대응 포함"}
-          </p>
-        </div>
-      )}
     </div>
   );
 }

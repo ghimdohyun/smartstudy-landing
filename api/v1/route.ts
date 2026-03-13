@@ -1,6 +1,5 @@
 // ── Single physical API file — all AI endpoints in one serverless function ─────
 // POST /api/v1?type=plan    → study plan generation  (Groq + lib/groq)
-// POST /api/v1?type=pdf     → curriculum PDF extract (lib/pdf-engine)
 // POST /api/v1?type=chat    → counseling chat reply  (Groq llama-3.3-70b)
 // POST /api/v1?type=vision  → 에브리타임 image OCR   (Groq llama-4-scout)
 export const dynamic     = "force-dynamic";
@@ -13,14 +12,6 @@ import { checkUsage, recordUsage, usageLimitResponse } from "@/lib/usage";
 import { callStudyPlanApi, UpstreamError } from "@/lib/groq";
 import { StudyPlanRequestSchema } from "@/lib/validations/study-plan";
 import { buildChatSystemPrompt, getUniversityConfig } from "@/lib/university-kb";
-import {
-  chunkPdfByPages,
-  retrieveRelevantChunks,
-  parseCurriculumTable,
-  findCourseInChunks,
-  buildCurriculumContext,
-} from "@/lib/pdf-engine";
-import type { ExtractedPdf } from "@/lib/pdf-engine";
 
 // ─── Shared Groq client ────────────────────────────────────────────────────────
 const GROQ_API_KEY = process.env.GROQ_API_KEY ?? "";
@@ -53,87 +44,6 @@ async function handlePlan(req: NextRequest): Promise<NextResponse> {
     }
     const msg = err instanceof Error ? err.message : "Internal error";
     return NextResponse.json({ error: msg }, { status: 500 });
-  }
-}
-
-// ══════════════════════════════════════════════════════════════════════════════
-// type=pdf
-// ══════════════════════════════════════════════════════════════════════════════
-const MAX_TEXT_BYTES   = 1 * 1024 * 1024;
-const MAX_PAGES        = 300;
-const CURRICULUM_QUERY = "소프트웨어학과 교육과정 전공필수 전공기초 전공선택 EO203 EO209 졸업학점";
-const VALIDATE_CODES   = ["EO203", "EO209"];
-interface PageEntry { pageNum: number; text: string }
-
-function serverSanitize(raw: string): string {
-  // eslint-disable-next-line no-control-regex
-  return raw
-    .replace(/[^\x20-\x7E\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s]/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-async function handlePdf(req: NextRequest): Promise<NextResponse> {
-  let body: { pageTexts?: PageEntry[]; totalPages?: number; universityId?: string };
-  try { body = await req.json() as typeof body; }
-  catch { return NextResponse.json({ error: "JSON 형식이 필요합니다." }, { status: 400 }); }
-
-  const { pageTexts, totalPages, universityId } = body;
-  if (!Array.isArray(pageTexts) || pageTexts.length === 0) {
-    return NextResponse.json(
-      { error: "pageTexts 배열이 필요합니다. 클라이언트에서 PDF 텍스트를 추출한 후 전송하세요." },
-      { status: 400 }
-    );
-  }
-  if (pageTexts.length > MAX_PAGES) {
-    return NextResponse.json(
-      { error: `페이지 수가 너무 많습니다 (최대 ${MAX_PAGES}). 커리큘럼 페이지만 선별해 주세요.` },
-      { status: 413 }
-    );
-  }
-
-  const sanitized: PageEntry[] = pageTexts.map((p) => ({
-    pageNum: typeof p.pageNum === "number" ? p.pageNum : 0,
-    text:    serverSanitize(String(p.text ?? "")),
-  }));
-
-  if (Buffer.byteLength(JSON.stringify(sanitized), "utf8") > MAX_TEXT_BYTES) {
-    return NextResponse.json(
-      { error: "추출된 텍스트가 너무 큽니다 (1MB 초과). 커리큘럼 페이지만 선별하여 올려주세요." },
-      { status: 413 }
-    );
-  }
-
-  try {
-    const extracted: ExtractedPdf = {
-      pages:      sanitized.map((p) => ({ pageNum: p.pageNum, text: p.text })),
-      totalPages: totalPages ?? sanitized.length,
-      fullText:   sanitized.map((p) => p.text).join("\n"),
-    };
-    if (extracted.fullText.trim().length < 50) {
-      return NextResponse.json(
-        { error: "PDF에서 텍스트를 추출할 수 없습니다. 스캔된 이미지 PDF이거나 텍스트 레이어가 없는 파일입니다." },
-        { status: 422 }
-      );
-    }
-    const chunks       = chunkPdfByPages(extracted, 10);
-    const topChunks    = retrieveRelevantChunks(chunks, CURRICULUM_QUERY, 5);
-    const courses      = parseCurriculumTable(extracted.fullText);
-    const validation: Record<string, { found: boolean; pageRange?: string; context?: string }> = {};
-    for (const code of VALIDATE_CODES) validation[code] = findCourseInChunks(chunks, code);
-    const curriculumText = buildCurriculumContext(topChunks, courses, universityId);
-    return NextResponse.json({
-      totalPages: extracted.totalPages, chunkCount: chunks.length,
-      courseCount: courses.length, courses: courses.slice(0, 100),
-      validation, curriculumText,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "처리 오류";
-    console.error("[pdf] processing error:", msg);
-    return NextResponse.json(
-      { error: `PDF 분석 중 오류가 발생했습니다: ${msg}. 텍스트를 직접 입력해 주세요.` },
-      { status: 500 }
-    );
   }
 }
 
@@ -292,12 +202,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const type = req.nextUrl.searchParams.get("type");
   switch (type) {
     case "plan":   return handlePlan(req);
-    case "pdf":    return handlePdf(req);
     case "chat":   return handleChat(req);
     case "vision": return handleVision(req);
     default:
       return NextResponse.json(
-        { error: `Unknown type: ${type ?? "(none)"}. Valid: plan, pdf, chat, vision` },
+        { error: `Unknown type: ${type ?? "(none)"}. Valid: plan, chat, vision` },
         { status: 404 }
       );
   }

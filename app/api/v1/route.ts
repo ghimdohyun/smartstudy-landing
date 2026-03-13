@@ -1,6 +1,5 @@
 // ── Single physical API file — all AI endpoints in one serverless function ─────
 // POST /api/v1?type=plan    → study plan generation  (Groq + lib/groq)
-// POST /api/v1?type=pdf     → curriculum PDF extract (lib/pdf-engine)
 // POST /api/v1?type=chat    → counseling chat reply  (Groq llama-3.3-70b)
 // POST /api/v1?type=vision  → 에브리타임 image OCR   (Groq llama-4-scout)
 export const dynamic     = "force-dynamic";
@@ -13,14 +12,6 @@ import { checkUsage, recordUsage, usageLimitResponse } from "@/lib/usage";
 import { callStudyPlanApi, UpstreamError } from "@/lib/groq";
 import { StudyPlanRequestSchema } from "@/lib/validations/study-plan";
 import { buildChatSystemPrompt, getUniversityConfig } from "@/lib/university-kb";
-import {
-  chunkPdfByPages,
-  retrieveRelevantChunks,
-  parseCurriculumTable,
-  findCourseInChunks,
-  buildCurriculumContext,
-} from "@/lib/pdf-engine";
-import type { ExtractedPdf } from "@/lib/pdf-engine";
 import { buildBlockedTimeSlots, detectOffDayPreference, minutesToHHMM } from "@/lib/planner-logic";
 
 // ─── Shared Groq client ────────────────────────────────────────────────────────
@@ -44,14 +35,11 @@ async function handlePlan(req: NextRequest): Promise<NextResponse> {
       );
     }
 
-    const { studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge, blockedSlots, preferOffDay } = parsed.data;
-    if (pdfKnowledge) {
-      console.info(`[plan] pdfKnowledge present — ${pdfKnowledge.length} chars → injecting as 학교 공식 규정`);
-    }
+    const { studentInfo, timetableInfo, imageUrl, universityId, blockedSlots, preferOffDay } = parsed.data;
     if (blockedSlots?.length) {
       console.info(`[plan] blockedSlots: ${blockedSlots.length}개 차단 슬롯 → BLOCKED_SLOTS 프롬프트 주입`);
     }
-    const result = await callStudyPlanApi({ studentInfo, timetableInfo, imageUrl, universityId, pdfKnowledge, blockedSlots, preferOffDay });
+    const result = await callStudyPlanApi({ studentInfo, timetableInfo, imageUrl, universityId, blockedSlots, preferOffDay });
     if (usage.userId) await recordUsage(usage.userId);
     return NextResponse.json(result);
   } catch (err: unknown) {
@@ -64,264 +52,6 @@ async function handlePlan(req: NextRequest): Promise<NextResponse> {
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// type=pdf
-// ══════════════════════════════════════════════════════════════════════════════
-const MAX_TEXT_BYTES   = 1 * 1024 * 1024;
-const MAX_PAGES        = 300;
-const CURRICULUM_QUERY = "소프트웨어학과 교육과정 전공필수 전공기초 전공선택 EO203 EO209 졸업학점";
-const VALIDATE_CODES   = ["EO203", "EO209"];
-const PDF_KNOWLEDGE_MODEL = "llama-3.3-70b-versatile";
-interface PageEntry { pageNum: number; text: string }
-
-/** Prompt for structured PDF knowledge extraction — Strict 4-Target Pinset Mode */
-const PDF_KNOWLEDGE_PROMPT = `당신은 대학 교육과정 편람 핀셋 분석 전문가다.
-아래 편람 텍스트에서 반드시 다음 4가지 정보만 추출하여 순수 JSON으로만 반환하라.
-코드블록·마크다운·설명 텍스트 없이 { 로 시작하는 JSON만 출력.
-
-╔══════════════════════════════════════════════════════════════════╗
-║  【물리적 페이지 앵커 맵】 — 키워드 매칭 이전에 이 위치 우선   ║
-║  텍스트 밀도·키워드와 무관하게 아래 페이지를 FIRST로 읽어라   ║
-╠══════════════════════════════════════════════════════════════════╣
-║  ★ PRIMARY ANCHOR  →  96~114페이지 (소프트웨어학과 전공 로드맵) ║
-║     → 특히 102페이지: 학수번호·과목명·학점 표 직접 추출        ║
-║  [졸업 요건]        →  2페이지 집중 분석                        ║
-║  [학년별 로드맵]    →  4~10페이지 (이수 체계도)                 ║
-║  [교과목 세부]      →  65~135페이지 (소프트웨어학과: 102p 최우선)║
-║  [특수 요건]        →  46~61페이지 (교직)                       ║
-║                         155~158페이지 (자격증)                  ║
-║  ※ PRIMARY ANCHOR 범위(96-114p) 밖 데이터는 보조 참고만        ║
-╚══════════════════════════════════════════════════════════════════╝
-
-=== 추출 타겟 (4가지만, 이것 외엔 무시) ===
-[TARGET-0] ★★★ 소프트웨어학과 전공 로드맵 직접 추출 (96~114페이지, 102페이지 최우선) ★★★
-  → 이 범위에서 발견되는 모든 학수번호(EO***), 과목명, 학점, 이수구분을 majorCourses에 삽입
-  → 키워드 점수가 낮아도 이 페이지 데이터를 최우선 처리
-[TARGET-1] 졸업 요건 (2페이지): 학과별 총 이수학점 + 영역별(교양필수/교양선택/전공필수/전공선택) 배분표
-[TARGET-2] 학년별 로드맵 (4~10페이지): 1~4학년 권장 이수 체계 (2학년 과목 집중 추출)
-[TARGET-3] 교과목 세부 (65~135페이지, 소프트웨어학과 102페이지 우선): 학수번호·과목명·학점·개설학기·이수구분
-[TARGET-4] 특수 요건 (46~61페이지=교직 / 155~158페이지=자격증): 별도 이수 필수 과목 및 조건
-
-=== 출력 스키마 ===
-{
-  "creditStructure": {
-    "totalRequired": 졸업_총학점_숫자_또는_null,
-    "majorRequired": 전공필수_학점_또는_null,
-    "majorElective": 전공선택_학점_또는_null,
-    "majorFoundation": 전공기초_학점_또는_null,
-    "generalRequired": 교양필수_학점_또는_null,
-    "generalElective": 교양선택_학점_또는_null,
-    "summary": "졸업이수 요건 한 문장 요약"
-  },
-  "curriculumMap": {
-    "year1": ["1학년 권장 과목명들"],
-    "year2": ["2학년 권장 과목명들 — 최대한 상세히"],
-    "year3": ["3학년 권장 과목명들"],
-    "year4": ["4학년 권장 과목명들"]
-  },
-  "majorCourses": [
-    {
-      "code": "학수번호",
-      "name": "과목명",
-      "credits": 학점_숫자,
-      "requirement": "전공필수 또는 전공선택 또는 전공기초",
-      "year": 권장학년_숫자_또는_null,
-      "semester": "1 또는 2 또는 null",
-      "prerequisite": "선수과목코드 또는 null",
-      "priority": "high(2학년 과목) 또는 normal(나머지)"
-    }
-  ],
-  "certifications": [
-    {
-      "name": "자격증 또는 교직 이름",
-      "relatedCourses": ["관련 과목명들"],
-      "note": "이수 조건 또는 메모"
-    }
-  ]
-}
-
-=== 핀셋 추출 규칙 ===
-1. 편람에 명시된 정보만 추출 — 추측·임의 생성 절대 금지
-2. 확인 불가 필드는 반드시 null (빈 문자열 금지)
-3. majorCourses: 전공 과목 전체 (최대 80개), 빠짐없이 추출
-4. priority 규칙: year가 2이거나 과목명/학수번호 앞에 "2학년" 명시 → "high", 나머지 → "normal"
-5. 한자·중국어·깨진 특수문자(\u0084 등) 완전 제거, 순수 한국어+숫자+영문만
-6. creditStructure.summary는 반드시 한국어로, 숫자 포함하여 구체적으로 작성
-
-[편람 텍스트]:
-`;
-
-/**
- * Call Groq to refine raw curriculum text into structured JSON knowledge.
- * Returns null if Groq is unavailable or parsing fails.
- */
-async function extractPdfKnowledge(curriculumText: string): Promise<string | null> {
-  if (!groq || curriculumText.length < 100) return null;
-  try {
-    const completion = await groq.chat.completions.create({
-      model: PDF_KNOWLEDGE_MODEL,
-      messages: [{
-        role: "user",
-        content: PDF_KNOWLEDGE_PROMPT + curriculumText.slice(0, 12000),
-      }],
-      temperature: 0.1,
-      max_tokens: 3000,
-      response_format: { type: "json_object" },
-    });
-    const raw = completion.choices[0]?.message?.content ?? "{}";
-    // Validate it's parseable before returning
-    const parsed = JSON.parse(raw) as {
-      creditStructure?: { totalRequired?: number | null; majorRequired?: number | null; summary?: string };
-      curriculumMap?: { year2?: string[] };
-      majorCourses?: Array<{ priority?: string; year?: number | null; name?: string; code?: string }>;
-      certifications?: Array<{ name?: string }>;
-    };
-
-    // ── 경성대 소프트웨어학과 2학년 졸업요건 구조화 로그 ──────────────────────
-    const cs   = parsed.creditStructure;
-    const year2Courses = parsed.curriculumMap?.year2 ?? [];
-    const highPriority = (parsed.majorCourses ?? []).filter((c) => c.priority === "high");
-    const certNames    = (parsed.certifications ?? []).map((c) => c.name).filter(Boolean);
-
-    console.info("━━━ [extractPdfKnowledge] KSU 2학년 졸업요건 추출 리포트 ━━━");
-    console.info(`  [TARGET-1 졸업요건] 총학점=${cs?.totalRequired ?? "미확인"}, 전공필수=${cs?.majorRequired ?? "미확인"}`);
-    console.info(`  [TARGET-1 요약] ${cs?.summary ?? "(없음)"}`);
-    console.info(`  [TARGET-2 로드맵] 2학년 권장과목 ${year2Courses.length}개:`, year2Courses.slice(0, 10).join(", "));
-    console.info(`  [TARGET-3 교과목] priority=high(2학년) ${highPriority.length}개:`);
-    highPriority.slice(0, 15).forEach((c) =>
-      console.info(`    • [${c.code ?? "?"}] ${c.name ?? "?"} (year=${c.year})`)
-    );
-    console.info(`  [TARGET-4 특수요건] 자격증/교직 ${certNames.length}개:`, certNames.join(", ") || "(없음)");
-    console.info(`  [총계] majorCourses=${parsed.majorCourses?.length ?? 0}개, rawLen=${raw.length}chars`);
-    console.info("━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━");
-
-    return raw;
-  } catch (err) {
-    console.warn("[extractPdfKnowledge] Groq refinement failed:", err instanceof Error ? err.message : err);
-    return null;
-  }
-}
-
-function serverSanitize(raw: string): string {
-  // eslint-disable-next-line no-control-regex
-  return raw
-    // Step 1: C0 제어문자 (NUL~US, DEL) → 공백
-    .replace(/[\u0000-\u001F\u007F]/g, " ")
-    // Step 2: C1 제어문자 (\u0080-\u009F, 포함 \u0084 NEL 등) → 공백
-    .replace(/[\u0080-\u009F]/g, " ")
-    // Step 3: 비인쇄 특수문자 (BOM, ZWSP, NBSP 등) → 공백
-    .replace(/[\uFEFF\u200B-\u200D\u2060\u00A0]/g, " ")
-    // Step 4: CJK 한자 (중국어·일본어) → 제거
-    .replace(/[\u4E00-\u9FFF\u3400-\u4DBF\uF900-\uFAFF\u3000-\u303F]/g, "")
-    // Step 5: 그 외 허용 범위 밖 유니코드 → 제거
-    // 허용: ASCII 인쇄문자 + 한글 + 표준 공백
-    .replace(/[^\x20-\x7E\uAC00-\uD7A3\u1100-\u11FF\u3130-\u318F\s]/g, "")
-    .replace(/\s{2,}/g, " ")
-    .trim();
-}
-
-async function handlePdf(req: NextRequest): Promise<NextResponse> {
-  let body: { pageTexts?: PageEntry[]; totalPages?: number; universityId?: string };
-  try { body = await req.json() as typeof body; }
-  catch { return NextResponse.json({ error: "JSON 형식이 필요합니다." }, { status: 400 }); }
-
-  const { pageTexts, totalPages, universityId } = body;
-  if (!Array.isArray(pageTexts) || pageTexts.length === 0) {
-    return NextResponse.json(
-      { error: "pageTexts 배열이 필요합니다. 클라이언트에서 PDF 텍스트를 추출한 후 전송하세요." },
-      { status: 400 }
-    );
-  }
-  if (pageTexts.length > MAX_PAGES) {
-    return NextResponse.json(
-      { error: `페이지 수가 너무 많습니다 (최대 ${MAX_PAGES}). 커리큘럼 페이지만 선별해 주세요.` },
-      { status: 413 }
-    );
-  }
-
-  const sanitized: PageEntry[] = pageTexts.map((p) => ({
-    pageNum: typeof p.pageNum === "number" ? p.pageNum : 0,
-    text:    serverSanitize(String(p.text ?? "")),
-  }));
-
-  if (Buffer.byteLength(JSON.stringify(sanitized), "utf8") > MAX_TEXT_BYTES) {
-    return NextResponse.json(
-      { error: "추출된 텍스트가 너무 큽니다 (1MB 초과). 커리큘럼 페이지만 선별하여 올려주세요." },
-      { status: 413 }
-    );
-  }
-
-  // ── 물리적 페이지 위치 우선 탐색 상수 ────────────────────────────────────────
-  // 경성대 편람: 소프트웨어학과 전공 로드맵은 약 96~114페이지에 위치
-  // 키워드 매칭 이전에 이 범위를 직접 추출 → 우선 컨텍스트로 사용
-  const SW_PHYSICAL_START = 96;
-  const SW_PHYSICAL_END   = 114;
-
-  try {
-    const extracted: ExtractedPdf = {
-      pages:      sanitized.map((p) => ({ pageNum: p.pageNum, text: p.text })),
-      totalPages: totalPages ?? sanitized.length,
-      fullText:   sanitized.map((p) => p.text).join("\n"),
-    };
-    if (extracted.fullText.trim().length < 50) {
-      return NextResponse.json(
-        { error: "PDF에서 텍스트를 추출할 수 없습니다. 스캔된 이미지 PDF이거나 텍스트 레이어가 없는 파일입니다." },
-        { status: 422 }
-      );
-    }
-    const chunks       = chunkPdfByPages(extracted, 10);
-    const topChunks    = retrieveRelevantChunks(chunks, CURRICULUM_QUERY, 5);
-    const courses      = parseCurriculumTable(extracted.fullText);
-    const validation: Record<string, { found: boolean; pageRange?: string; context?: string }> = {};
-    for (const code of VALIDATE_CODES) validation[code] = findCourseInChunks(chunks, code);
-
-    // ── 물리적 위치 우선 블록: 소프트웨어학과 전공 로드맵 페이지 (96-114p) ──────
-    // 키워드 점수와 무관하게 해당 페이지를 항상 컨텍스트 최상단에 배치
-    const swPhysicalPages = sanitized.filter(
-      (p) => p.pageNum >= SW_PHYSICAL_START && p.pageNum <= SW_PHYSICAL_END,
-    );
-    const physicalPriorityBlock = swPhysicalPages.length > 0
-      ? `## 🎯 [물리적 위치 우선] 소프트웨어학과 전공 로드맵 (${SW_PHYSICAL_START}-${SW_PHYSICAL_END}페이지)\n` +
-        swPhysicalPages
-          .map((p) => `[${p.pageNum}페이지] ${p.text.slice(0, 600)}`)
-          .join("\n")
-      : "";
-    console.info(
-      `[pdf/physical-scan] 소프트웨어학과 페이지 범위(${SW_PHYSICAL_START}-${SW_PHYSICAL_END}p): ${swPhysicalPages.length}페이지 감지`,
-    );
-
-    // 물리적 우선 블록을 curriculumText 앞에 삽입.
-    // SW 페이지(96-114p)가 없어도 KSU SOT 데이터 참조 지시를 fallback으로 삽입.
-    const baseContext = buildCurriculumContext(topChunks, courses, universityId);
-    const swAnchorBlock = swPhysicalPages.length > 0
-      ? physicalPriorityBlock
-      : `## ⚠ [PDF SW 앵커 없음] 96-114페이지 미포함 — 아래 지시 따름\n` +
-        `소프트웨어학과 전공 로드맵 페이지(96-114p)가 이 PDF에 없습니다.\n` +
-        `→ lib/data/ksu-sw.ts 로컬 SOT 데이터를 최우선으로 사용하고,\n` +
-        `   아래 PDF 텍스트는 교양·공통 과목 파악용으로만 활용하세요.`;
-    const curriculumText = swAnchorBlock + "\n\n---\n\n" + baseContext;
-
-    // ── PDF Knowledge Refinement: Groq extracts structured JSON from curriculum ──
-    const pdfKnowledge = await extractPdfKnowledge(curriculumText);
-    if (pdfKnowledge) {
-      console.info("[pdf] pdfKnowledge injected into response — ready for hybrid prompt merge");
-    }
-
-    return NextResponse.json({
-      totalPages: extracted.totalPages, chunkCount: chunks.length,
-      courseCount: courses.length, courses: courses.slice(0, 100),
-      validation, curriculumText,
-      // NEW: structured knowledge for hybrid prompt — stored as internalPdfKnowledge on client
-      pdfKnowledge: pdfKnowledge ?? null,
-    });
-  } catch (err: unknown) {
-    const msg = err instanceof Error ? err.message : "처리 오류";
-    console.error("[pdf] processing error:", msg);
-    return NextResponse.json(
-      { error: `PDF 분석 중 오류가 발생했습니다: ${msg}. 텍스트를 직접 입력해 주세요.` },
-      { status: 500 }
-    );
-  }
-}
 
 // ══════════════════════════════════════════════════════════════════════════════
 // type=chat
@@ -635,12 +365,11 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const type = req.nextUrl.searchParams.get("type");
   switch (type) {
     case "plan":   return handlePlan(req);
-    case "pdf":    return handlePdf(req);
     case "chat":   return handleChat(req);
     case "vision": return handleVision(req);
     default:
       return NextResponse.json(
-        { error: `Unknown type: ${type ?? "(none)"}. Valid: plan, pdf, chat, vision` },
+        { error: `Unknown type: ${type ?? "(none)"}. Valid: plan, chat, vision` },
         { status: 404 }
       );
   }

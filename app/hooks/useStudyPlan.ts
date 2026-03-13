@@ -160,10 +160,6 @@ export function useStudyPlan() {
       setError('학생 정보를 입력해주세요.');
       return;
     }
-    if (!input.imageUrl?.trim() && !input.pdfMode) {
-      setError('시간표 이미지를 업로드하거나 PDF를 업로드해주세요.');
-      return;
-    }
 
     // Build dynamic step messages based on image count
     const imageCount = (input.imageUrl ?? '').split('|||').filter(Boolean).length;

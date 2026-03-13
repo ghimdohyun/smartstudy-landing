@@ -17,7 +17,6 @@ import GraduationRiskBanner from "@/components/GraduationRiskBanner";
 import { generateAllPlans, generateAllPlansWithPreferences, generateFallbackPlan, type EngineResult, type FallbackResult } from "@/lib/planner-engine";
 import RoadmapSection from "@/components/RoadmapSection";
 import { PlannerProvider, usePlannerContext } from "@/lib/planner-context";
-import UniversalUploader, { type PdfKnowledge } from "@/components/upload/UniversalUploader";
 import PlanFilterPanel from "@/components/PlanFilterPanel";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
@@ -285,7 +284,7 @@ function FallbackSwapBanner({ fallback }: { fallback: FallbackResult }) {
 // ─── Planner settings panel (uploader + preferences) ─────────────────────────
 
 function PlannerSettingsPanel({ onRegenerate }: { onRegenerate: () => void }) {
-  const { setPdfKnowledge, setPreferences, preferences, hasPdf } = usePlannerContext();
+  const { setPreferences, preferences } = usePlannerContext();
   const [open, setOpen] = useState(false);
 
   return (
@@ -297,33 +296,14 @@ function PlannerSettingsPanel({ onRegenerate }: { onRegenerate: () => void }) {
       >
         <div className="flex items-center gap-2.5">
           <span className="text-[13px] font-bold text-slate-700 dark:text-slate-200">
-            ⚙️ 플랜 설정 — PDF 편람 / 희망 조건
+            ⚙️ 플랜 설정 — 희망 조건
           </span>
-          {hasPdf && (
-            <span className="text-[9px] font-bold px-1.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/60 text-emerald-600 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-700">
-              PDF 로드됨
-            </span>
-          )}
         </div>
         <svg className={["w-4 h-4 text-slate-400 transition-transform", open ? "rotate-180" : ""].join(" ")} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M6 9l6 6 6-6"/></svg>
       </button>
 
       {open && (
         <div className="px-5 pb-5 space-y-5 border-t border-slate-200 dark:border-slate-700 pt-4">
-          {/* Uploader */}
-          <div>
-            <p className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mb-2 uppercase tracking-wider">
-              파일 업로드
-            </p>
-            <UniversalUploader
-              onPdfLoaded={(k: PdfKnowledge) => {
-                setPdfKnowledge(k);
-                // Auto-boost mandatoryChainScore when PDF is loaded
-                setPreferences(prev => ({ ...prev, mandatoryChainScore: 60 }));
-              }}
-            />
-          </div>
-
           {/* Filter panel — off-day, priority, purpose */}
           <div>
             <p className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wider">
@@ -381,7 +361,7 @@ function PlannerSettingsPanel({ onRegenerate }: { onRegenerate: () => void }) {
 
 function PlanPageInner() {
   // ── Context (PDF knowledge + preferences) ─────────────────────────────────
-  const { preferences, pdfKnowledge } = usePlannerContext();
+  const { preferences } = usePlannerContext();
 
   const [result, setResult] = useState<StudyPlanResult | null>(null);
   // mounted=false → server renders only <PlanPageSkeleton />, zero hydration mismatch
@@ -688,11 +668,10 @@ function PlanPageInner() {
           <PlannerSettingsPanel onRegenerate={regenerateWithPreferences} />
         )}
 
-        {/* Graduation risk banner — dynamic PDF diff when pdfKnowledge is set */}
+        {/* Graduation risk banner */}
         {graduationRisk && graduationRisk.severity !== "safe" && (
           <GraduationRiskBanner
             risk={graduationRisk}
-            pdfExtractedCourses={pdfKnowledge?.graduationRequired}
             plannedCourseCodes={plans.flatMap(p => (p.courses ?? []).map(c => c.code ?? c.name))}
           />
         )}
