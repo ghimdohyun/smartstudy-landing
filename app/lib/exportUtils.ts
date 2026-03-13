@@ -2,13 +2,20 @@
 
 import type { StudyPlan, StudyPlanResult } from '@/types';
 
-export function downloadJSON(data: unknown, filename: string): void {
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
-  const url = URL.createObjectURL(blob);
+function triggerDownload(url: string, filename: string): void {
   const a = document.createElement('a');
   a.href = url;
   a.download = filename;
+  a.style.display = 'none';
+  document.body.appendChild(a);
   a.click();
+  document.body.removeChild(a);
+}
+
+export function downloadJSON(data: unknown, filename: string): void {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  triggerDownload(url, filename);
   URL.revokeObjectURL(url);
 }
 
@@ -36,10 +43,7 @@ export function downloadCSV(result: StudyPlanResult, filename: string): void {
   // BOM for Excel UTF-8 recognition
   const blob = new Blob(['\uFEFF' + csv], { type: 'text/csv;charset=utf-8' });
   const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  a.click();
+  triggerDownload(url, filename);
   URL.revokeObjectURL(url);
 }
 
@@ -174,8 +178,5 @@ export async function downloadPng(
   );
   if (!canvas) return;
   const dataUrl = canvas.toDataURL("image/png");
-  const a = document.createElement("a");
-  a.href = dataUrl;
-  a.download = filename;
-  a.click();
+  triggerDownload(dataUrl, filename);
 }

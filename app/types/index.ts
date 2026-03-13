@@ -50,6 +50,22 @@ export interface Course {
   id?: string;
   /** Category string from everytime data */
   category?: string;
+  /**
+   * Recommended academic year for this course (1~4) derived from the
+   * curriculum guide. Used for UI visual treatment (dim 1st-year courses,
+   * highlight 2nd-year critical courses).
+   */
+  recommendedYear?: number;
+  /**
+   * True when this course is a prerequisite for one or more higher-level
+   * courses. Courses marked true receive elevated scoring in planner-engine.
+   */
+  isPrerequisite?: boolean;
+  /**
+   * Catalogue codes of courses that depend on this course as a prerequisite.
+   * e.g. EO203 unlocks ["EO301"], EO209 unlocks ["EO211","EO302"]
+   */
+  prerequisiteFor?: string[];
 }
 
 export interface StudyPlan {
@@ -58,6 +74,8 @@ export interface StudyPlan {
   courses?: Course[];
   totalCredits?: number;
   note?: string;
+  /** Dynamic risk items from the planner engine (e.g. "금공강 실패", "연강 3쌍") */
+  riskAnalysis?: string[];
 }
 
 export interface SemesterPlan {
@@ -93,4 +111,10 @@ export interface StudyPlanInput {
   universityId?: string;
   /** True when a PDF was uploaded; skips imageUrl validation and uses text-mode LLM */
   pdfMode?: boolean;
+  /**
+   * Structured knowledge extracted from curriculum PDF.
+   * Serialised JSON string of { creditStructure, curriculumMap, majorCourses, certifications }.
+   * Injected into the prompt as "학교 공식 규정" — highest authority source.
+   */
+  pdfKnowledge?: string;
 }

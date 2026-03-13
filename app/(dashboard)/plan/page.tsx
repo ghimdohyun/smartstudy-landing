@@ -18,6 +18,7 @@ import { generateAllPlans, generateAllPlansWithPreferences, generateFallbackPlan
 import RoadmapSection from "@/components/RoadmapSection";
 import { PlannerProvider, usePlannerContext } from "@/lib/planner-context";
 import UniversalUploader, { type PdfKnowledge } from "@/components/upload/UniversalUploader";
+import PlanFilterPanel from "@/components/PlanFilterPanel";
 
 // SSR:false — prevents hydration mismatch from html2canvas + useRef DOM measurements
 const TimetableGrid = dynamic(() => import("@/components/TimetableGrid"), {
@@ -323,12 +324,14 @@ function PlannerSettingsPanel({ onRegenerate }: { onRegenerate: () => void }) {
             />
           </div>
 
-          {/* Preferences */}
+          {/* Filter panel — off-day, priority, purpose */}
           <div>
             <p className="text-[12px] font-bold text-slate-600 dark:text-slate-300 mb-3 uppercase tracking-wider">
               희망/기피 조건
             </p>
-            <div className="flex flex-wrap gap-3">
+            <PlanFilterPanel />
+            {/* Extra fine-grained toggles */}
+            <div className="flex flex-wrap gap-3 mt-3">
               {/* Early morning toggle */}
               <label className="flex items-center gap-2 cursor-pointer">
                 <input

@@ -357,7 +357,7 @@ function computePlanRisks(
   if (preferOffDay) {
     const offDay = preferOffDay.replace("요일", "").trim();
     const violated = courses.filter(
-      (c) => c.day && !c._virtual && (c.day.match(/[월화수목금]/g) ?? []).includes(offDay),
+      (c) => c.day && !c._virtual && (c.day.match(/[월화수목금]/g) ?? ([] as string[])).includes(offDay),
     );
     if (violated.length > 0) {
       risks.push(`${offDay}공강 실패 — ${violated.map((c) => c.name).join(", ")} 배치됨`);
@@ -802,7 +802,7 @@ export function addOffDayPreference(
   preferOffDay: string,
 ): BlockedTimeSlot[] {
   const day = preferOffDay.replace("요일", "").trim();
-  if (!ALL_DAYS.includes(day as (typeof ALL_DAYS)[number])) return slots;
+  if (!(ALL_DAYS as readonly string[]).includes(day)) return slots;
   return [
     ...slots,
     { day, startMin: 8 * 60, endMin: 22 * 60, source: "preference" },

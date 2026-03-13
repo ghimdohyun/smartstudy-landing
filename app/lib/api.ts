@@ -24,7 +24,7 @@ export class UpgradeRequiredError extends Error {
 // ─── Chat ─────────────────────────────────────────────────────────────────────
 
 export async function fetchChatReply(message: string, universityId?: string): Promise<string> {
-  const res = await fetch('/api/chat', {
+  const res = await fetch('/api/v1?type=chat', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ message, ...(universityId ? { universityId } : {}) }),
@@ -74,6 +74,7 @@ interface RawPlan {
   strategy?: string;
   totalCredits?: number;
   courses?: Array<string | RawCourse>;
+  riskAnalysis?: string[];
 }
 
 function normalizePlan(raw: RawPlan | undefined, label: string): StudyPlan | null {
@@ -96,12 +97,13 @@ function normalizePlan(raw: RawPlan | undefined, label: string): StudyPlan | nul
     strategy: raw.strategy ?? raw.title,
     courses,
     totalCredits: raw.totalCredits,
+    riskAnalysis: Array.isArray(raw.riskAnalysis) ? raw.riskAnalysis : undefined,
   };
 }
 
 export async function fetchStudyPlan(input: StudyPlanInput): Promise<StudyPlanResult> {
   // ?_t= timestamp busts any edge/proxy cache that ignores Cache-Control headers
-  const res = await fetch(`/api/study-plan?_t=${Date.now()}`, {
+  const res = await fetch(`/api/v1?type=plan&_t=${Date.now()}`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({

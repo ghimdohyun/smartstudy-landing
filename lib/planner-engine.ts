@@ -43,6 +43,26 @@ export interface PlannerPreferences {
    * Default: 0.
    */
   mandatoryChainScore?: number;
+  /**
+   * Days to exclude from the timetable (off-day preference).
+   * Courses scheduled on these days receive a hard veto (score -999).
+   * e.g. ["수", "금"] to create a Wed+Fri free day.
+   */
+  offDays?: string[];
+  /**
+   * Scoring priority mode.
+   * - "easy": favour high rating + low workload (꿀강 위주)
+   * - "hard": favour required/major courses regardless of rating (빡공/전공심화)
+   * Default: neutral.
+   */
+  priority?: "easy" | "hard";
+  /**
+   * Course-selection purpose.
+   * - "graduation": boost required/offeredOnce courses
+   * - "frontend" | "backend" | "ai": boost relevant major electives by tag
+   * Default: "graduation".
+   */
+  purpose?: "graduation" | "frontend" | "backend" | "ai";
 }
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -109,7 +129,8 @@ function parseTargetYear(raw: string | null | undefined): number | null {
 
 /** Convert EverytimeCourse → Course (app type) */
 function toAppCourse(et: EverytimeCourse): Course {
-  // Use first schedule slot for day/time
+  // Merge all schedule days (e.g. 화목 for Tue+Thu courses)
+  const allDays = [...new Set(et.schedule.map(s => s.day))].join("");
   const slot = et.schedule[0];
   const period = slot?.periods[0];
   const startMin = period ? PERIOD_TO_MINUTES[period] : undefined;
@@ -127,7 +148,7 @@ function toAppCourse(et: EverytimeCourse): Course {
     name: et.name,
     code: et.code,
     professor: et.professor,
-    day: slot?.day,
+    day: allDays || slot?.day,
     time: timeStr,
     credits: et.credits,
     category: et.category,
@@ -259,9 +280,25 @@ function hasMorningSlot(et: EverytimeCourse): boolean {
   return et.schedule.some(s => s.periods.includes(1));
 }
 
+/** Career-purpose tag sets for course matching */
+const PURPOSE_TAGS: Record<string, string[]> = {
+  frontend: ["웹", "UI", "프론트", "JavaScript", "HTML", "CSS", "React"],
+  backend:  ["서버", "백엔드", "데이터베이스", "DB", "Spring", "Node", "API"],
+  ai:       ["인공지능", "AI", "머신러닝", "딥러닝", "데이터", "통계", "파이썬"],
+};
+
+/**
+ * Returns true if a course's days overlap with any of the blocked off-days.
+ */
+function hasOffDayConflict(et: EverytimeCourse, offDays: string[]): boolean {
+  if (offDays.length === 0) return false;
+  return et.schedule.some(slot => offDays.includes(slot.day));
+}
+
 /**
  * Compute the preference-based score modifier for a candidate course.
  * Returns a signed delta to add on top of the plan's base scorer.
+ * Returns -999 to hard-veto a course (e.g. off-day conflict).
  */
 function preferenceScore(
   et: EverytimeCourse,
@@ -269,6 +306,11 @@ function preferenceScore(
   current: EverytimeCourse[],
 ): number {
   let delta = 0;
+
+  // 0. Off-day hard veto — eliminate courses on blocked days entirely
+  if (prefs.offDays && prefs.offDays.length > 0) {
+    if (hasOffDayConflict(et, prefs.offDays)) return -999;
+  }
 
   // 1. Early morning penalty
   if (prefs.penaltyEarlyMorning && hasMorningSlot(et)) {
@@ -284,23 +326,37 @@ function preferenceScore(
   }
 
   // 3. Mandatory prerequisite chain score
-  // A course earns this bonus if it is a required/offeredOnce prerequisite AND
-  // none of the courses it unlocks are already covered by the current selection.
   if (prefs.mandatoryChainScore) {
     const ruleCode = et.academicRulesCode ?? et.code;
     const unlocksOther = (prerequisiteForMap.get(ruleCode) ?? []).length > 0;
     const isRequired = requiredCodes.has(ruleCode) || et.isGraduationRequired;
     if (isRequired && unlocksOther) {
-      // Check if the chain is currently at risk (none of the unlocked courses
-      // are already in the selection)
       const unlocked = prerequisiteForMap.get(ruleCode) ?? [];
       const chainCovered = unlocked.some(uCode =>
         current.some(c => (c.academicRulesCode ?? c.code) === uCode)
       );
-      if (!chainCovered) {
-        delta += prefs.mandatoryChainScore;
-      }
+      if (!chainCovered) delta += prefs.mandatoryChainScore;
     }
+  }
+
+  // 4. Priority mode
+  if (prefs.priority === "easy") {
+    // Boost high-rating, penalise required/heavy courses
+    delta += et.rating * 8;
+    if (isAcademicRequired(et)) delta -= 10;
+  } else if (prefs.priority === "hard") {
+    // Boost major/required courses
+    if (isAcademicRequired(et)) delta += 30;
+    if (et.category === "전공" || et.category === "전공기초" || et.category === "학부기초") delta += 20;
+  }
+
+  // 5. Purpose / career path scoring
+  if (prefs.purpose === "graduation") {
+    if (isAcademicRequired(et)) delta += 25;
+  } else if (prefs.purpose && prefs.purpose in PURPOSE_TAGS) {
+    const tags = PURPOSE_TAGS[prefs.purpose];
+    const nameUpper = et.name.toUpperCase();
+    if (tags.some(t => nameUpper.includes(t.toUpperCase()))) delta += 30;
   }
 
   return delta;
